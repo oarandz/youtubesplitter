@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video Wall — multiview gallery</title>
+<style>
+  :root{
+    --bg:#0d0f12;
+    --panel:#16191e;
+    --panel-2:#1d2127;
+    --line:#2a2f37;
+    --line-bright:#3a414b;
+    --text:#e8eaed;
+    --muted:#8a9099;
+    --dim:#5a616b;
+    --tally:#ff2e2e;        /* on-air / live audio */
+    --tally-glow:rgba(255,46,46,.45);
+    --amber:#ffb02e;        /* meters */
+    --green:#39d98a;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--mono);
+    font-size:13px;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* ---------- SETUP ---------- */
+  #setup{
+    position:fixed;inset:0;
+    display:flex;align-items:center;justify-content:center;
+    padding:24px;
+    background:
+      radial-gradient(1200px 600px at 50% -10%,rgba(255,46,46,.06),transparent 60%),
+      var(--bg);
+    z-index:50;
+  }
+  .card{
+    width:min(640px,100%);
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:hidden;
+  }
+  .card-head{
+    padding:18px 22px;
+    border-bottom:1px solid var(--line);
+    display:flex;align-items:baseline;gap:14px;
+  }
+  .card-head h1{
+    font-size:15px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  }
+  .card-head .sub{color:var(--muted);font-size:11px;letter-spacing:.06em}
+  .card-body{padding:22px}
+  label.fld{display:block;color:var(--muted);font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px}
+  textarea{
+    width:100%;height:170px;resize:vertical;
+    background:var(--bg);color:var(--text);
+    border:1px solid var(--line);border-radius:7px;
+    padding:12px 14px;font-family:var(--mono);font-size:13px;line-height:1.6;
+  }
+  textarea:focus{outline:none;border-color:var(--line-bright)}
+  .hint{color:var(--dim);font-size:11px;line-height:1.7;margin-top:12px}
+  .hint code{color:var(--muted);background:var(--panel-2);padding:1px 5px;border-radius:4px}
+  .row{display:flex;gap:10px;margin-top:18px;align-items:center}
+  button{
+    font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+    cursor:pointer;border-radius:7px;border:1px solid var(--line);
+    background:var(--panel-2);color:var(--text);padding:11px 18px;
+    transition:border-color .15s,background .15s,color .15s;
+  }
+  button:hover{border-color:var(--line-bright)}
+  button.primary{background:var(--tally);border-color:var(--tally);color:#fff;font-weight:700}
+  button.primary:hover{filter:brightness(1.08)}
+  button:disabled{opacity:.4;cursor:default}
+  .err{color:var(--tally);font-size:11px;margin-top:10px;min-height:14px;letter-spacing:.04em}
+
+  /* ---------- WALL ---------- */
+  #stage{display:none;flex-direction:column;height:100%}
+  #wall{
+    flex:1;display:grid;gap:8px;padding:8px;
+    grid-template-columns:repeat(var(--cols,4),1fr);
+    grid-auto-rows:1fr;
+    grid-auto-flow:dense;
+    min-height:0;
+  }
+  .tile{
+    position:relative;background:#000;border:1px solid var(--line);
+    border-radius:6px;overflow:hidden;min-height:0;cursor:pointer;
+    transition:border-color .15s;
+  }
+  .tile:hover{border-color:var(--line-bright)}
+  .tile .screen{position:absolute;inset:0}
+  .tile iframe{width:100%;height:100%;display:block;border:0;pointer-events:none}
+  .tile.live{
+    border-color:var(--tally);
+    box-shadow:0 0 0 1px var(--tally),0 0 22px var(--tally-glow);
+    grid-column:span var(--span,2);
+    grid-row:span var(--span,2);
+    order:-1;
+  }
+  /* label / tally chrome */
+  .chrome{
+    position:absolute;inset:0;pointer-events:none;
+    display:flex;flex-direction:column;justify-content:space-between;
+  }
+  .topbar{display:flex;justify-content:space-between;align-items:flex-start;padding:8px}
+  .ch{
+    background:rgba(0,0,0,.6);backdrop-filter:blur(4px);
+    border:1px solid var(--line);border-radius:5px;
+    padding:4px 8px;font-size:11px;letter-spacing:.1em;color:var(--muted);
+  }
+  .tile.live .ch{color:var(--text);border-color:var(--line-bright)}
+  .tally-badge{
+    display:none;align-items:center;gap:6px;
+    background:var(--tally);color:#fff;font-weight:700;font-size:10px;letter-spacing:.14em;
+    padding:4px 9px;border-radius:5px;
+  }
+  .tile.live .tally-badge{display:inline-flex}
+  .tally-badge .dot{width:7px;height:7px;border-radius:50%;background:#fff;animation:pulse 1.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .mutedtag{
+    display:none;background:rgba(0,0,0,.6);border:1px solid var(--line);border-radius:5px;
+    padding:4px 8px;font-size:10px;letter-spacing:.12em;color:var(--amber);
+  }
+  .tile.live.is-muted .mutedtag{display:inline-block}
+  .tile.live.is-muted .tally-badge{background:#5a616b}
+  .tile.live.is-muted .tally-badge .dot{animation:none;opacity:.5}
+  .overlay-msg{
+    position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    text-align:center;padding:14px;color:var(--muted);font-size:11px;letter-spacing:.06em;
+    background:repeating-linear-gradient(45deg,#101216,#101216 10px,#0c0e11 10px,#0c0e11 20px);
+  }
+  .tile.errored .overlay-msg{display:flex}
+  .tile.errored .screen{display:none}
+
+  /* ---------- DESK / STATUS BAR ---------- */
+  #desk{
+    flex:0 0 auto;display:flex;align-items:center;gap:18px;
+    padding:10px 14px;border-top:1px solid var(--line);background:var(--panel);
+    flex-wrap:wrap;
+  }
+  .desk-onair{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:.14em;font-size:12px}
+  .desk-onair .dot{width:9px;height:9px;border-radius:50%;background:var(--tally);box-shadow:0 0 10px var(--tally-glow);animation:pulse 1.4s infinite}
+  .desk-onair.muted{color:var(--muted)}
+  .desk-onair.muted .dot{background:var(--dim);box-shadow:none;animation:none}
+  .desk-src{color:var(--muted);font-size:12px;letter-spacing:.04em;max-width:34vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .meter{display:flex;align-items:center;gap:8px}
+  .meter .lbl{color:var(--dim);font-size:10px;letter-spacing:.14em}
+  .bars{display:flex;gap:2px}
+  .bars i{width:5px;height:15px;background:var(--line);border-radius:1px}
+  .bars i.on{background:var(--green)}
+  .bars i.on.hot{background:var(--amber)}
+  .bars i.on.peak{background:var(--tally)}
+  .bars.off i.on{background:var(--dim)}
+  .spacer{flex:1}
+  .keys{display:flex;gap:14px;flex-wrap:wrap;color:var(--dim);font-size:10px;letter-spacing:.06em}
+  .keys b{color:var(--muted);font-weight:600}
+  kbd{
+    display:inline-block;background:var(--panel-2);border:1px solid var(--line);border-bottom-width:2px;
+    border-radius:4px;padding:1px 5px;color:var(--text);font-family:var(--mono);font-size:10px;margin-right:3px;
+  }
+  .desk-btn{padding:7px 12px;font-size:10px}
+
+  /* toast for volume / actions */
+  #toast{
+    position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    background:rgba(0,0,0,.78);border:1px solid var(--line-bright);border-radius:10px;
+    padding:16px 22px;font-size:14px;letter-spacing:.06em;z-index:40;
+    opacity:0;pointer-events:none;transition:opacity .12s;
+    display:flex;flex-direction:column;align-items:center;gap:10px;min-width:180px;
+  }
+  #toast.show{opacity:1}
+  #toast .big{font-size:20px;font-weight:700;letter-spacing:.1em}
+  #toast .bars i{height:18px}
+
+  @media (max-width:720px){
+    #wall{--cols:1 !important}
+    .tile.live{--span:1;grid-column:span 1;grid-row:span 1}
+    .keys{display:none}
+    .desk-src{max-width:40vw}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .tally-badge .dot,.desk-onair .dot{animation:none}
+  }
+</style>
+</head>
+<body>
+
+  <!-- SETUP -->
+  <div id="setup">
+    <div class="card">
+      <div class="card-head">
+        <h1>Video Wall</h1>
+        <span class="sub">multiview gallery · keyboard mixer</span>
+      </div>
+      <div class="card-body">
+        <label class="fld" for="sources">Sources — one per line</label>
+        <textarea id="sources" spellcheck="false" placeholder="https://www.youtube.com/watch?v=jfKfPfyJRdk&#10;https://youtu.be/...&#10;dQw4w9WgXcQ"></textarea>
+        <div class="hint">
+          Paste YouTube links or raw IDs. Accepts <code>watch?v=</code>, <code>youtu.be/</code>,
+          <code>/live/</code>, <code>/embed/</code>, <code>/shorts/</code> and bare 11-char IDs.
+          Live streams work the same way. A channel page like <code>/@handle/live</code> won't
+          work — use the actual stream's video link.
+        </div>
+        <div class="row">
+          <button id="load" class="primary">Build the wall</button>
+          <button id="demo">Load demo feeds</button>
+        </div>
+        <div class="err" id="setupErr"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WALL -->
+  <div id="stage">
+    <div id="wall"></div>
+    <div id="desk">
+      <div class="desk-onair" id="onair"><span class="dot"></span><span id="onairTxt">ON AIR</span></div>
+      <div class="desk-src" id="deskSrc">CH 1</div>
+      <div class="meter">
+        <span class="lbl">VOL</span>
+        <div class="bars" id="deskBars"></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="keys">
+        <span><b><kbd>←</kbd><kbd>→</kbd></b>cycle air</span>
+        <span><b><kbd>1</kbd>–<kbd>9</kbd></b>take</span>
+        <span><b><kbd>↑</kbd><kbd>↓</kbd></b>volume</span>
+        <span><b><kbd>M</kbd></b>mute</span>
+        <span><b><kbd>Space</kbd></b>play/pause</span>
+        <span><b><kbd>F</kbd></b>full</span>
+      </div>
+      <button class="desk-btn" id="edit">Edit sources</button>
+    </div>
+  </div>
+
+  <!-- toast -->
+  <div id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  var feeds = [];          // {videoId, player, ready, errored, el, chEl, srcEl}
+  var live = 0;
+  var volume = 70;
+  var muted = false;
+  var apiReady = false;
+  var pendingBuild = false;
+
+  /* ---- YouTube IFrame API ---- */
+  window.onYouTubeIframeAPIReady = function(){
+    apiReady = true;
+    if(pendingBuild){ pendingBuild = false; buildPlayers(); }
+  };
+  (function loadAPI(){
+    var s = document.createElement('script');
+    s.src = "https://www.youtube.com/iframe_api";
+    s.onerror = function(){ setErr("Couldn't reach YouTube. Check the connection and that this file is opened in a normal browser tab."); };
+    document.head.appendChild(s);
+  })();
+
+  /* ---- URL / ID parsing ---- */
+  function extractId(raw){
+    raw = raw.trim();
+    if(!raw) return null;
+    if(/^[A-Za-z0-9_-]{11}$/.test(raw)) return raw;     // bare id
+    var m;
+    m = raw.match(/[?&]v=([A-Za-z0-9_-]{11})/);          if(m) return m[1];
+    m = raw.match(/youtu\.be\/([A-Za-z0-9_-]{11})/);     if(m) return m[1];
+    m = raw.match(/\/live\/([A-Za-z0-9_-]{11})/);        if(m) return m[1];
+    m = raw.match(/\/embed\/([A-Za-z0-9_-]{11})/);       if(m) return m[1];
+    m = raw.match(/\/shorts\/([A-Za-z0-9_-]{11})/);      if(m) return m[1];
+    m = raw.match(/([A-Za-z0-9_-]{11})/);                if(m) return m[1]; // last resort
+    return null;
+  }
+
+  /* ---- DOM refs ---- */
+  var $ = function(id){ return document.getElementById(id); };
+  var setup = $('setup'), stage = $('stage'), wall = $('wall');
+  var setupErr = $('setupErr'), toast = $('toast');
+
+  function setErr(t){ setupErr.textContent = t || ""; }
+
+  /* ---- build ---- */
+  $('load').addEventListener('click', startBuild);
+  $('demo').addEventListener('click', function(){
+    $('sources').value =
+      "https://www.youtube.com/watch?v=jfKfPfyJRdk\n" +   // lofi girl
+      "https://www.youtube.com/watch?v=4xDzrJKXOOY\n" +   // synthwave radio
+      "https://www.youtube.com/watch?v=zhDwjnYZiCo\n" +   // lofi sleep
+      "https://www.youtube.com/watch?v=Na0w3Mz46GA";      // chillhop
+    setErr("");
+  });
+
+  function startBuild(){
+    setErr("");
+    var lines = $('sources').value.split(/[\n,]+/);
+    var ids = [], seen = {};
+    for(var i=0;i<lines.length;i++){
+      var id = extractId(lines[i]);
+      if(id && !seen[id]){ seen[id]=1; ids.push(id); }
+    }
+    if(ids.length === 0){ setErr("No valid YouTube links or IDs found."); return; }
+    if(ids.length > 16){ ids = ids.slice(0,16); setErr("Capped at 16 sources."); }
+
+    // reset
+    feeds.forEach(function(f){ try{ f.player && f.player.destroy(); }catch(e){} });
+    feeds = []; wall.innerHTML = ""; live = 0;
+
+    var cols = ids.length <= 1 ? 1 : ids.length <= 2 ? 2 : ids.length <= 6 ? 3 : 4;
+    var span = ids.length >= 3 ? 2 : 1;
+    wall.style.setProperty('--cols', cols);
+
+    ids.forEach(function(id, idx){
+      var tile = document.createElement('div');
+      tile.className = 'tile';
+      tile.style.setProperty('--span', span);
+      tile.dataset.index = idx;
+      tile.innerHTML =
+        '<div class="screen"><div id="player-'+idx+'"></div></div>' +
+        '<div class="chrome"><div class="topbar">' +
+          '<span class="ch">CH '+(idx+1)+'</span>' +
+          '<span class="tally-badge"><span class="dot"></span>ON AIR</span>' +
+        '</div><div class="topbar" style="justify-content:flex-end;align-items:flex-end">' +
+          '<span class="mutedtag">AUDIO MUTED</span>' +
+        '</div></div>' +
+        '<div class="overlay-msg">CH '+(idx+1)+' unavailable<br>(embedding disabled or stream offline)</div>';
+      tile.addEventListener('click', function(){ setLive(idx); });
+      wall.appendChild(tile);
+      feeds.push({ videoId:id, player:null, ready:false, errored:false, el:tile });
+    });
+
+    setup.style.display = 'none';
+    stage.style.display = 'flex';
+    renderDesk();
+
+    if(apiReady) buildPlayers(); else pendingBuild = true;
+  }
+
+  function buildPlayers(){
+    feeds.forEach(function(f, idx){
+      f.player = new YT.Player('player-'+idx, {
+        videoId: f.videoId,
+        playerVars: { autoplay:1, mute:1, controls:0, rel:0, playsinline:1, modestbranding:1, disablekb:1, iv_load_policy:3 },
+        events: {
+          'onReady': function(e){
+            f.ready = true;
+            try{
+              e.target.mute();
+              e.target.setVolume(volume);
+              e.target.playVideo();
+              var d = e.target.getVideoData && e.target.getVideoData();
+              if(d && d.title){ f.title = d.title; if(idx===live) renderDesk(); }
+            }catch(err){}
+            applyAudio();
+          },
+          'onError': function(){
+            f.errored = true;
+            f.el.classList.add('errored');
+            if(idx===live) renderDesk();
+          }
+        }
+      });
+    });
+  }
+
+  /* ---- audio routing ---- */
+  function applyAudio(){
+    feeds.forEach(function(f, idx){
+      if(!f.player || !f.ready) return;
+      try{
+        if(idx===live && !muted){ f.player.unMute(); f.player.setVolume(volume); }
+        else { f.player.mute(); }
+      }catch(e){}
+    });
+  }
+
+  function setLive(idx){
+    if(idx<0 || idx>=feeds.length) return;
+    live = idx;
+    feeds.forEach(function(f,i){ f.el.classList.toggle('live', i===idx); });
+    updateMutedClass();
+    applyAudio();
+    renderDesk();
+    // pull title if it arrived late
+    var f = feeds[idx];
+    if(f.player && f.ready && !f.title){
+      try{ var d=f.player.getVideoData(); if(d&&d.title){ f.title=d.title; renderDesk(); } }catch(e){}
+    }
+  }
+
+  function cycle(dir){
+    if(feeds.length===0) return;
+    setLive((live + dir + feeds.length) % feeds.length);
+  }
+
+  function changeVolume(delta){
+    volume = Math.max(0, Math.min(100, volume + delta));
+    if(muted && volume>0){ muted=false; updateMutedClass(); }
+    applyAudio();
+    renderDesk();
+    showToast('<div class="big">VOL '+volume+'</div>'+barsHtml(volume,false));
+  }
+
+  function toggleMute(){
+    muted = !muted;
+    updateMutedClass();
+    applyAudio();
+    renderDesk();
+    showToast('<div class="big">'+(muted?'MUTED':'AUDIO ON')+'</div>');
+  }
+
+  function updateMutedClass(){
+    feeds.forEach(function(f,i){ f.el.classList.toggle('is-muted', i===live && muted); });
+  }
+
+  function togglePlay(){
+    var f = feeds[live];
+    if(!f || !f.player || !f.ready) return;
+    try{
+      var st = f.player.getPlayerState(); // 1 playing, 2 paused
+      if(st===1){ f.player.pauseVideo(); showToast('<div class="big">PAUSED</div>'); }
+      else { f.player.playVideo(); showToast('<div class="big">PLAY</div>'); }
+    }catch(e){}
+  }
+
+  function goFullscreen(){
+    var f = feeds[live];
+    if(!f) return;
+    var el = f.el;
+    var req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+    if(document.fullscreenElement){ document.exitFullscreen(); }
+    else if(req){ req.call(el); }
+  }
+
+  /* ---- desk / meters ---- */
+  function barsHtml(vol, off){
+    var n = 20, lit = Math.round(vol/100*n), h='';
+    for(var i=0;i<n;i++){
+      var cls = i<lit ? 'on' : '';
+      if(cls && i>=n*0.85) cls+=' peak'; else if(cls && i>=n*0.6) cls+=' hot';
+      h+='<i class="'+cls+'"></i>';
+    }
+    return '<div class="bars'+(off?' off':'')+'">'+h+'</div>';
+  }
+
+  function renderDesk(){
+    var f = feeds[live] || {};
+    var onair = $('onair');
+    onair.classList.toggle('muted', muted);
+    $('onairTxt').textContent = muted ? 'AUDIO MUTED' : 'ON AIR';
+    var label = 'CH '+(live+1);
+    if(f.errored) label += ' · unavailable';
+    else if(f.title) label += ' · '+f.title;
+    $('deskSrc').textContent = label;
+    var bars = $('deskBars');
+    var b = barsHtml(volume, muted);
+    bars.innerHTML = b.replace(/^<div class="bars[^"]*">|<\/div>$/g,'');
+    bars.className = 'bars'+(muted?' off':'');
+  }
+
+  /* ---- toast ---- */
+  var toastT;
+  function showToast(html){
+    toast.innerHTML = html;
+    toast.classList.add('show');
+    clearTimeout(toastT);
+    toastT = setTimeout(function(){ toast.classList.remove('show'); }, 900);
+  }
+
+  /* ---- edit ---- */
+  $('edit').addEventListener('click', function(){
+    stage.style.display='none';
+    setup.style.display='flex';
+  });
+
+  /* ---- keyboard ---- */
+  document.addEventListener('keydown', function(e){
+    if(stage.style.display==='none') return;
+    if(document.activeElement && document.activeElement.tagName==='TEXTAREA') return;
+    var k = e.key;
+    if(k==='ArrowRight'){ cycle(1); e.preventDefault(); }
+    else if(k==='ArrowLeft'){ cycle(-1); e.preventDefault(); }
+    else if(k==='ArrowUp'){ changeVolume(5); e.preventDefault(); }
+    else if(k==='ArrowDown'){ changeVolume(-5); e.preventDefault(); }
+    else if(k===' '){ togglePlay(); e.preventDefault(); }
+    else if(k==='m'||k==='M'){ toggleMute(); }
+    else if(k==='f'||k==='F'){ goFullscreen(); }
+    else if(/^[1-9]$/.test(k)){ var n=parseInt(k,10)-1; if(n<feeds.length){ setLive(n); } }
+    // first real interaction nudges audio in case autoplay kept it muted
+    applyAudio();
+  });
+
+  // Ctrl/Cmd+Enter in textarea = build
+  $('sources').addEventListener('keydown', function(e){
+    if((e.metaKey||e.ctrlKey) && e.key==='Enter'){ startBuild(); }
+  });
+})();
+</script>
+</body>
+</html>
