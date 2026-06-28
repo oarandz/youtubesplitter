@@ -73,8 +73,8 @@
   .tile.air.is-muted .tally-badge{background:#5a616b}
   .tile.air.is-muted .tally-badge .dot{animation:none;opacity:.5}
 
-  .screen{position:relative;flex:1;min-height:0;background:#000}
-  .screen iframe{position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none}
+  .screen{position:relative;flex:1;min-height:0;background:#000;overflow:hidden}
+  .screen iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0;pointer-events:none;transform-origin:0 0}
   .overlay-msg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;
     padding:14px;color:var(--muted);font-size:11px;letter-spacing:.06em;
     background:repeating-linear-gradient(45deg,#101216,#101216 10px,#0c0e11 10px,#0c0e11 20px)}
@@ -198,6 +198,7 @@
         <span><b><kbd>R</kbd></b>feeds</span>
         <span><b><kbd>F</kbd></b>full</span>
       </div>
+      <button class="desk-btn" id="qualityBtn">MAIN &le;720p</button>
       <button class="desk-btn" id="resetLayout">Reset layout</button>
       <button class="desk-btn" id="edit">Edit sources</button>
     </div>
@@ -212,6 +213,7 @@
   var tiles=[], mainIdx=-1, audioIdx=-1, volume=70, muted=false;
   var apiReady=false, pendingBuild=false;
   var thumbFrac=0.26, wireFrac=0.20;   // layout model (fractions of wall)
+  var perfCap=720, CAPS=[720,480,360,0]; // main render-resolution cap (px height; 0 = full)
   var SP=10;                            // splitter thickness
   var split=null;                       // active splitter drag
   var REFRESH_MS=30000, TICK_MS=30000, FLASH_TICK_MS=5000, ORANGE_MS=30000, RED_WINDOW_MS=300000;
@@ -256,6 +258,9 @@
   $('load').addEventListener('click', startBuild);
   $('edit').addEventListener('click', function(){ stage.style.display='none'; setup.style.display='flex'; });
   $('resetLayout').addEventListener('click', function(){ thumbFrac=0.26; wireFrac=0.20; var v=videoIndices(); if(v.length) setMain(v[0]); else computeLayout(); });
+  function updateQualityBtn(){ $('qualityBtn').innerHTML = perfCap>0 ? ('MAIN &le;'+perfCap+'p') : 'MAIN FULL RES'; }
+  $('qualityBtn').addEventListener('click', function(){ perfCap=CAPS[(CAPS.indexOf(perfCap)+1)%CAPS.length]; updateQualityBtn(); computeLayout();
+    showToast('<div class="big">'+(perfCap>0?('MAIN \u2264'+perfCap+'p'):'MAIN FULL RES')+'</div>'); });
   $('sources').addEventListener('keydown', function(e){ if((e.metaKey||e.ctrlKey)&&e.key==='Enter') startBuild(); });
   $('feeds').addEventListener('keydown', function(e){ if((e.metaKey||e.ctrlKey)&&e.key==='Enter') startBuild(); });
 
@@ -342,7 +347,7 @@
     computeLayout();
   });
   function endSplit(e){ if(!split) return; split.el.classList.remove('active'); try{ split.el.releasePointerCapture(e.pointerId); }catch(_){}
-    split=null; document.body.classList.remove('splitting'); }
+    split=null; document.body.classList.remove('splitting'); applyResCap(); }
   document.addEventListener('pointerup', endSplit);
   document.addEventListener('pointercancel', endSplit);
   window.addEventListener('resize', function(){ if(stage.style.display!=='none') computeLayout(); });
@@ -376,6 +381,20 @@
     if(wire){ setGeom(wire.el, 0, vidH+SP, W, wireH);
       hsplit.style.display='flex'; hsplit.style.left='0px'; hsplit.style.top=vidH+'px'; hsplit.style.width=W+'px'; hsplit.style.height=SP+'px';
     } else if(hsplit){ hsplit.style.display='none'; }
+
+    applyResCap();
+  }
+  // Cap the MAIN player's render resolution: size its iframe small, scale up to fill (GPU upscale = cheap decode).
+  function applyResCap(){
+    if(split) return;   // don't thrash quality while a divider is being dragged
+    tiles.forEach(function(t,i){ if(t.kind!=='youtube') return;
+      var ifr=t.el.querySelector('iframe'); if(!ifr) return;
+      var sc=t.el.querySelector('.screen'), sw=sc.clientWidth, sh=sc.clientHeight;
+      if(i===mainIdx && perfCap>0 && sh>perfCap && sw>0){
+        var s=sh/perfCap;
+        ifr.style.width=Math.round(sw/s)+'px'; ifr.style.height=Math.round(sh/s)+'px'; ifr.style.transform='scale('+s+')';
+      } else { ifr.style.width='100%'; ifr.style.height='100%'; ifr.style.transform='none'; }
+    });
   }
 
   /* ---------- players ---------- */
@@ -387,7 +406,7 @@
         events:{
           'onReady':function(e){ t.ready=true; try{ e.target.mute(); e.target.setVolume(volume); e.target.playVideo();
               var d=e.target.getVideoData&&e.target.getVideoData(); if(d&&d.title){ t.title=d.title; renderDesk(); } }catch(err){}
-            applyAudioAndAir(); },
+            applyAudioAndAir(); applyResCap(); },
           'onError':function(){ t.errored=true; t.el.classList.add('errored'); renderDesk(); }
         }
       });
