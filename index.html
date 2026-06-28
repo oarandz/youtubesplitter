@@ -91,7 +91,7 @@
   .split.h::before{height:2px;width:34px}
 
   /* ---------- RSS WIRE ---------- */
-  .tile.rss{background:var(--panel);--wire-font:36px}
+  .tile.rss{background:var(--panel);--wire-font:18px}
   .feedhead{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 11px;
     min-height:27px;border-bottom:1px solid var(--line);user-select:none}
   .fh-left{display:flex;align-items:center;gap:8px;min-width:0}
@@ -209,6 +209,7 @@
       </div>
       <button class="desk-btn" id="recBtn">&#9679; Rec</button>
       <button class="desk-btn" id="qualityBtn">MAIN &le;720p</button>
+      <button class="desk-btn" id="addFeed">+ Add feed</button>
       <button class="desk-btn" id="resetLayout">Reset layout</button>
       <button class="desk-btn" id="edit">Edit sources</button>
     </div>
@@ -226,7 +227,7 @@
   var perfCap=720, CAPS=[720,480,360,0]; // main render-resolution cap (px height; 0 = full)
   var SP=10;                            // splitter thickness
   var split=null;                       // active splitter drag
-  var REFRESH_MS=30000, TICK_MS=30000, FLASH_TICK_MS=5000, ORANGE_MS=30000, RED_WINDOW_MS=300000;
+  var REFRESH_MS=30000, TICK_MS=30000, FLASH_TICK_MS=5000, ORANGE_MS=30000, RED_WINDOW_MS=300000, WIRE_MAXAGE_MS=3600000;
 
   // Paste a free YouTube Data API v3 key between the quotes for reliable channel auto-follow (incl. catching Number 10 going live).
   // Get one at console.cloud.google.com -> enable "YouTube Data API v3" -> Credentials -> API key. Leave blank to use direct links only.
@@ -235,10 +236,9 @@
   // Lines with a direct video link play instantly. Lines with "channel:UC..." auto-follow that channel's current live stream,
   // but channel auto-follow ONLY works when YT_API_KEY is set above (YouTube no longer lets the live video be found without it).
   var DEFAULT_VIDEOS=
-    "Sky News | https://www.youtube.com/watch?v=YDvsBbKfLPA\n"+
-    "GB News | https://www.youtube.com/watch?v=QliL4CGc7iY\n"+
-    "Times Radio | https://www.youtube.com/watch?v=eTIATpVxKbI\n"+
-    "Number 10 | channel:UC8o7mIMg3mmO9-dx3e2iFgw";
+    "Sky News | https://www.youtube.com/watch?v=F2x_9ZZz8Q8\n"+
+    "GB News | https://www.youtube.com/watch?v=I8E6eDmhegY\n"+
+    "Times Radio | https://www.youtube.com/watch?v=eTIATpVxKbI";
   var DEFAULT_FEEDS=
     "https://feeds.bbci.co.uk/news/uk/rss.xml\n"+
     "https://feeds.skynews.com/feeds/rss/uk.xml\n"+
@@ -287,6 +287,24 @@
   $('load').addEventListener('click', startBuild);
   $('edit').addEventListener('click', function(){ stage.style.display='none'; setup.style.display='flex'; });
   $('resetLayout').addEventListener('click', function(){ thumbFrac=0.26; wireFrac=0.20; var v=videoIndices(); if(v.length) setMain(v[0]); else computeLayout(); });
+  $('addFeed').addEventListener('click', addFeedPrompt);
+  function addFeedPrompt(){
+    var raw=prompt('Add a feed — paste a YouTube link.\nOptional label, e.g.  BBC News | https://www.youtube.com/watch?v=…');
+    if(raw==null) return; raw=raw.trim(); if(!raw) return;
+    var label='', src=raw, bar=raw.indexOf('|');
+    if(bar>=0){ var a=raw.slice(0,bar).trim(), b=raw.slice(bar+1).trim();
+      if(extractChannel(b)||extractHandle(b)||extractId(b)){ label=a; src=b; }
+      else if(extractChannel(a)||extractHandle(a)||extractId(a)){ label=b; src=a; } }
+    var ch=extractChannel(src), hd=ch?null:extractHandle(src), id=(ch||hd)?null:extractId(src), spec=null;
+    if(ch) spec={channelId:ch,label:label}; else if(hd) spec={handleUrl:hd,label:label}; else if(id) spec={id:id,label:label};
+    if(!spec){ showToast('<div class="big">NOT A YOUTUBE LINK</div>'); return; }
+    var nextN=0; tiles.forEach(function(t){ if(t.kind==='youtube' && t.__n>=nextN) nextN=t.__n+1; });
+    addVideoTile(spec, nextN);
+    var t=tiles[tiles.length-1];
+    computeLayout(); renderDesk();
+    if(apiReady) makePlayer(t); else pendingBuild=true;
+    showToast('<div class="big">FEED ADDED</div>');
+  }
   function updateQualityBtn(){ $('qualityBtn').innerHTML = perfCap>0 ? ('MAIN &le;'+perfCap+'p') : 'MAIN FULL RES'; }
   $('qualityBtn').addEventListener('click', function(){ perfCap=CAPS[(CAPS.indexOf(perfCap)+1)%CAPS.length]; updateQualityBtn(); computeLayout();
     showToast('<div class="big">'+(perfCap>0?('MAIN \u2264'+perfCap+'p'):'MAIN FULL RES')+'</div>'); });
@@ -363,8 +381,8 @@
            statEl:el.querySelector('.feedstat'), statTxtEl:el.querySelector('.stattxt')};
     el.querySelectorAll('.wbtn').forEach(function(b){
       b.addEventListener('click', function(e){ e.stopPropagation();
-        var cur=parseFloat(getComputedStyle(el).getPropertyValue('--wire-font'))||36;
-        el.style.setProperty('--wire-font', clamp(cur+parseInt(b.dataset.d,10)*4,14,72)+'px'); });
+        var cur=parseFloat(getComputedStyle(el).getPropertyValue('--wire-font'))||18;
+        el.style.setProperty('--wire-font', clamp(cur+parseInt(b.dataset.d,10)*4,12,72)+'px'); });
     });
     wall.appendChild(el);
     tiles.push(t);
@@ -632,6 +650,7 @@
     if(okCount===0){ t.failed=true; renderFeed(t); setFeedStatus(t,'fail'); return; }
     all.sort(function(a,b){ return new Date(b.date)-new Date(a.date); });
     var sl={}; all=all.filter(function(it){ var k=it.link||it.title; if(sl[k]) return false; sl[k]=1; return true; });
+    var now=Date.now(); all=all.filter(function(it){ var p=Date.parse(it.date); return isNaN(p) || (now-p)<=WIRE_MAXAGE_MS; });
     t.items=all.slice(0,40); t.failed=false; t.lastUpdate=Date.now();
     t.titleEl.textContent='Wires · '+okCount+'/'+t.urls.length+' sources';
     renderFeed(t); setFeedStatus(t,'ok');
