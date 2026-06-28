@@ -142,6 +142,16 @@
   .keys b{color:var(--muted);font-weight:600}
   kbd{display:inline-block;background:var(--panel-2);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:1px 5px;color:var(--text);font-family:var(--mono);font-size:10px;margin-right:3px}
   .desk-btn{padding:7px 12px;font-size:10px}
+  #recBtn.recording{background:var(--tally);border-color:var(--tally);color:#fff;font-weight:700}
+  #transport{position:absolute;z-index:40;display:none;align-items:center;gap:8px;padding:0 10px;
+    background:linear-gradient(transparent,rgba(0,0,0,.8) 55%)}
+  .tp-btn{background:rgba(0,0,0,.55);border:1px solid var(--line-bright);color:var(--text);font-family:var(--mono);
+    font-size:10px;letter-spacing:.04em;padding:3px 7px;border-radius:4px;cursor:pointer;flex:0 0 auto}
+  .tp-btn:hover{border-color:#fff}
+  .tp-bar{flex:1;height:8px;background:rgba(255,255,255,.2);border-radius:4px;position:relative;cursor:pointer;touch-action:none}
+  .tp-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--tally);border-radius:4px}
+  .tp-bar::after{content:"";position:absolute;top:-4px;bottom:-4px;left:-4px;right:-4px}
+  .tp-time{font-size:10px;color:#fff;white-space:nowrap;font-variant-numeric:tabular-nums;flex:0 0 auto;text-shadow:0 1px 2px #000}
 
   #toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.78);
     border:1px solid var(--line-bright);border-radius:10px;padding:16px 22px;font-size:14px;letter-spacing:.06em;z-index:40;
@@ -198,6 +208,7 @@
         <span><b><kbd>R</kbd></b>feeds</span>
         <span><b><kbd>F</kbd></b>full</span>
       </div>
+      <button class="desk-btn" id="recBtn">&#9679; Rec</button>
       <button class="desk-btn" id="qualityBtn">MAIN &le;720p</button>
       <button class="desk-btn" id="resetLayout">Reset layout</button>
       <button class="desk-btn" id="edit">Edit sources</button>
@@ -278,7 +289,7 @@
     var n=0;
     vids.forEach(function(id){ addVideoTile(id, n++); });
     if(rssUrls.length) addWireTile(rssUrls);
-    buildSplitters();
+    buildSplitters(); buildTransport();
 
     var v=videoIndices(); mainIdx = v.length?v[0]:-1; audioIdx=mainIdx;
 
@@ -287,10 +298,11 @@
 
     if(vids.length){ if(apiReady) buildPlayers(); else pendingBuild=true; }
     refreshAllFeeds();
-    [ '__rssTimer','__tickTimer','__flashTimer' ].forEach(function(k){ if(window[k]) clearInterval(window[k]); });
+    [ '__rssTimer','__tickTimer','__flashTimer','__tpTimer' ].forEach(function(k){ if(window[k]) clearInterval(window[k]); });
     window.__rssTimer=setInterval(refreshAllFeeds, REFRESH_MS);
     window.__tickTimer=setInterval(tickTimes, TICK_MS);
     window.__flashTimer=setInterval(refreshFlashes, FLASH_TICK_MS);
+    window.__tpTimer=setInterval(updateTransport, 500);
   }
 
   /* ---------- tiles ---------- */
@@ -335,6 +347,42 @@
     h.addEventListener('pointerdown', function(e){ startSplit(e,'h',h); });
     wall.appendChild(v); wall.appendChild(h);
   }
+  function mainPlayer(){ return (mainIdx>=0 && tiles[mainIdx] && tiles[mainIdx].kind==='youtube') ? tiles[mainIdx].player : null; }
+  function fmtT(s){ s=Math.max(0,Math.floor(s||0)); var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),x=s%60;
+    return (h?h+':'+(m<10?'0':''):'')+m+':'+(x<10?'0':'')+x; }
+  function buildTransport(){
+    var tp=document.createElement('div'); tp.id='transport';
+    tp.innerHTML='<button class="tp-btn" data-a="b30">&#171; 30s</button>'+
+      '<button class="tp-btn" data-a="b10">&#171; 10s</button>'+
+      '<button class="tp-btn" data-a="play">&#9654;</button>'+
+      '<div class="tp-bar"><div class="tp-fill"></div></div>'+
+      '<span class="tp-time">0:00 / 0:00</span>'+
+      '<button class="tp-btn" data-a="live">LIVE</button>';
+    wall.appendChild(tp);
+    var bar=tp.querySelector('.tp-bar'), dragging=false;
+    function seekFrac(e){ var p=mainPlayer(); if(!p) return; try{ var r=bar.getBoundingClientRect();
+      var f=clamp((e.clientX-r.left)/r.width,0,1); var d=p.getDuration()||0; if(d) p.seekTo(f*d, true); }catch(_){}}
+    bar.addEventListener('pointerdown', function(e){ e.preventDefault(); dragging=true; try{bar.setPointerCapture(e.pointerId);}catch(_){} seekFrac(e); });
+    bar.addEventListener('pointermove', function(e){ if(dragging) seekFrac(e); });
+    bar.addEventListener('pointerup', function(e){ dragging=false; try{bar.releasePointerCapture(e.pointerId);}catch(_){} });
+    tp.querySelectorAll('.tp-btn').forEach(function(b){ b.addEventListener('click', function(){ var p=mainPlayer(); if(!p) return;
+      try{ var a=b.dataset.a;
+        if(a==='b30') p.seekTo(Math.max(0,(p.getCurrentTime()||0)-30), true);
+        else if(a==='b10') p.seekTo(Math.max(0,(p.getCurrentTime()||0)-10), true);
+        else if(a==='live') p.seekTo((p.getDuration()||0), true);
+        else if(a==='play'){ var st=p.getPlayerState(); if(st===1) p.pauseVideo(); else p.playVideo(); }
+      }catch(_){}}); });
+  }
+  function updateTransport(){
+    var tp=$('transport'); if(!tp) return; var p=mainPlayer();
+    if(!p){ tp.style.display='none'; return; }
+    try{ var cur=p.getCurrentTime()||0, dur=p.getDuration()||0;
+      tp.querySelector('.tp-fill').style.width=(dur?clamp(cur/dur,0,1)*100:0)+'%';
+      tp.querySelector('.tp-time').textContent=fmtT(cur)+' / '+fmtT(dur);
+      var st=p.getPlayerState&&p.getPlayerState();
+      tp.querySelector('[data-a=play]').innerHTML=(st===1)?'&#10073;&#10073;':'&#9654;';
+    }catch(_){}
+  }
   function startSplit(e, type, el){
     e.preventDefault(); split={type:type, el:el}; el.classList.add('active');
     document.body.classList.add('splitting'); try{ el.setPointerCapture(e.pointerId); }catch(_){}
@@ -360,7 +408,7 @@
     var vids=videoIndices(), wire=null; tiles.forEach(function(t){ if(t.kind==='rss') wire=t; });
     var vsplit=$('vsplit'), hsplit=$('hsplit');
 
-    if(!vids.length && wire){ setGeom(wire.el,0,0,W,H); if(vsplit)vsplit.style.display='none'; if(hsplit)hsplit.style.display='none'; return; }
+    if(!vids.length && wire){ setGeom(wire.el,0,0,W,H); if(vsplit)vsplit.style.display='none'; if(hsplit)hsplit.style.display='none'; var tp0=$('transport'); if(tp0)tp0.style.display='none'; return; }
 
     var wireH = wire ? clamp(Math.round(H*wireFrac), Math.round(H*0.08), Math.round(H*0.7)) : 0;
     var vidH = H - (wire ? wireH+SP : 0);
@@ -370,6 +418,7 @@
 
     if(mainIdx<0 || tiles[mainIdx].kind!=='youtube') mainIdx=vids[0];
     setGeom(tiles[mainIdx].el, 0, 0, mainW, vidH);
+    var tp=$('transport'); if(tp){ var bh=34; tp.style.display='flex'; tp.style.left='0px'; tp.style.width=mainW+'px'; tp.style.height=bh+'px'; tp.style.top=(vidH-bh)+'px'; }
 
     if(hasThumbs){
       var thumbs=vids.filter(function(i){ return i!==mainIdx; });
@@ -539,6 +588,66 @@
     else if(k==='r'||k==='R'){ refreshAllFeeds(); showToast('<div class="big">REFRESHING</div>'); }
     else if(/^[1-9]$/.test(k)){ var v=videoIndices(), n=parseInt(k,10)-1; if(n<v.length) setMain(v[n]); }
   });
+
+  /* ---------- recording (tab audio -> WAV) ---------- */
+  (function(){
+    var recBtn=$('recBtn'), rec=null, chunks=[], recStream=null, recStart=0, recTimer=null;
+    function pad(n){ return (n<10?'0':'')+n; }
+    function stamp(){ var d=new Date(); return d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'-'+pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds()); }
+    function note(msg){ toast.innerHTML='<div style="font-size:13px;max-width:260px;text-align:center;line-height:1.5">'+msg+'</div>';
+      toast.classList.add('show'); clearTimeout(toast.__t); toast.__t=setTimeout(function(){ toast.classList.remove('show'); }, 4200); }
+    function setUI(on){ recBtn.classList.toggle('recording', on); recBtn.innerHTML = on ? '&#9632; Stop 00:00' : '&#9679; Rec'; }
+    function tickTime(){ var s=Math.floor((Date.now()-recStart)/1000); recBtn.innerHTML='&#9632; Stop '+pad(Math.floor(s/60))+':'+pad(s%60); }
+
+    async function start(){
+      if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia){ note("Recording needs a Chromium browser (Chrome/Edge). Safari can\u2019t capture tab audio."); return; }
+      var ds;
+      try{ ds=await navigator.mediaDevices.getDisplayMedia({video:true, audio:true}); }
+      catch(e){ note("Recording cancelled."); return; }
+      var aud=ds.getAudioTracks();
+      if(!aud.length){ ds.getTracks().forEach(function(t){ t.stop(); });
+        note("No audio was shared. Click Rec again, choose <b>This Tab</b>, and tick <b>Share tab audio</b>."); return; }
+      ds.getVideoTracks().forEach(function(t){ t.stop(); });   // keep audio only
+      recStream=new MediaStream(aud);
+      aud[0].onended=function(){ if(rec&&rec.state!=='inactive') stop(); };
+      chunks=[];
+      try{ rec=new MediaRecorder(recStream); }
+      catch(e){ note("Couldn\u2019t start the recorder."); recStream.getTracks().forEach(function(t){t.stop();}); return; }
+      rec.ondataavailable=function(e){ if(e.data&&e.data.size) chunks.push(e.data); };
+      rec.onstop=finish;
+      rec.start();
+      recStart=Date.now(); setUI(true); recTimer=setInterval(tickTime,1000);
+    }
+    function stop(){ if(rec&&rec.state!=='inactive') rec.stop(); if(recStream) recStream.getTracks().forEach(function(t){ t.stop(); });
+      clearInterval(recTimer); setUI(false); }
+    async function finish(){
+      var blob=new Blob(chunks,{type:(rec&&rec.mimeType)||'audio/webm'});
+      if(!blob.size){ note("Nothing was recorded."); return; }
+      note("Encoding WAV\u2026");
+      try{
+        var ab=await blob.arrayBuffer();
+        var Ctx=window.AudioContext||window.webkitAudioContext, ctx=new Ctx();
+        var audio=await ctx.decodeAudioData(ab);
+        var wav=encodeWAV(audio); ctx.close();
+        var a=document.createElement('a'); a.href=URL.createObjectURL(wav); a.download='wall-audio-'+stamp()+'.wav';
+        document.body.appendChild(a); a.click();
+        setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },2000);
+        note("Saved WAV \u00b7 "+Math.round(audio.duration)+"s");
+      }catch(e){ note("Couldn\u2019t encode the WAV."); }
+    }
+    function encodeWAV(buf){
+      var nc=buf.numberOfChannels, sr=buf.sampleRate, len=buf.length, ba=nc*2, dataLen=len*ba;
+      var ch=[]; for(var c=0;c<nc;c++) ch.push(buf.getChannelData(c));
+      var ab=new ArrayBuffer(44+dataLen), v=new DataView(ab);
+      function s(o,str){ for(var i=0;i<str.length;i++) v.setUint8(o+i,str.charCodeAt(i)); }
+      s(0,'RIFF'); v.setUint32(4,36+dataLen,true); s(8,'WAVE'); s(12,'fmt ');
+      v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,nc,true); v.setUint32(24,sr,true);
+      v.setUint32(28,sr*ba,true); v.setUint16(32,ba,true); v.setUint16(34,16,true); s(36,'data'); v.setUint32(40,dataLen,true);
+      var off=44; for(var i=0;i<len;i++){ for(var c=0;c<nc;c++){ var x=Math.max(-1,Math.min(1,ch[c][i])); v.setInt16(off, x<0?x*0x8000:x*0x7FFF, true); off+=2; } }
+      return new Blob([v],{type:'audio/wav'});
+    }
+    recBtn.addEventListener('click', function(){ if(rec&&rec.state!=='inactive') stop(); else start(); });
+  })();
 
   /* ---------- clock ---------- */
   (function(){
