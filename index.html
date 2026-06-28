@@ -177,7 +177,7 @@
         <label class="fld field-gap" for="feeds">News feeds — RSS URL per line</label>
         <textarea id="feeds" spellcheck="false"></textarea>
         <div class="hint">
-          Click any channel (or press its number / the arrow keys) to make it the big main window — the rest tile as thumbnails. Name a video with <code>Sky News | https://…</code> on its line. To auto-follow a channel's <b>current</b> live stream (so it picks up the next show when they restart), give it a channel ID instead of a video link — e.g. <code>Sky News | channel:UCxxxx</code> or a <code>youtube.com/channel/UCxxxx</code> URL. Drag the dividers between windows to resize them. The wires bar merges all feeds, tagged by source, newest first, refreshing every 30 seconds: new headlines flash orange for 30s, anything timestamped within 5 minutes flashes red. Feeds use public CORS proxies (one per feed).
+          Click any channel (or press its number / the arrow keys) to make it the big main window — the rest tile as thumbnails. Name a video with <code>Sky News | https://…</code> on its line. To auto-follow a channel's <b>current</b> live stream (so it picks up the next show when they restart), give it the channel instead of a video link — a <code>youtube.com/@handle</code> link, a <code>channel:UCxxxx</code> ID, or a <code>youtube.com/channel/UCxxxx</code> URL all work (handles are resolved automatically). Drag the dividers between windows to resize them. The wires bar merges all feeds, tagged by source, newest first, refreshing every 30 seconds: new headlines flash orange for 30s, anything timestamped within 5 minutes flashes red. Feeds use public CORS proxies (one per feed).
         </div>
         <div class="row">
           <button id="load" class="primary">Build the wall</button>
@@ -230,7 +230,7 @@
 
   var DEFAULT_VIDEOS=
     "Sky News | https://www.youtube.com/watch?v=YDvsBbKfLPA\n"+
-    "GB News | https://www.youtube.com/watch?v=IggcSkJHJBo\n"+
+    "GB News | channel:UC0vn8ISa4LKMunLbzaXLnOQ\n"+
     "Times Radio | https://www.youtube.com/watch?v=eTIATpVxKbI";
   var DEFAULT_FEEDS=
     "https://feeds.bbci.co.uk/news/uk/rss.xml\n"+
@@ -261,6 +261,12 @@
     if((m=s.match(/^channel:(UC[A-Za-z0-9_-]{22})$/i))) return m[1];
     if((m=s.match(/^(UC[A-Za-z0-9_-]{22})$/))) return m[1];
     return null; }
+  function extractHandle(s){ s=s.trim(); var m;
+    if((m=s.match(/youtube\.com\/(@[\w.\-]+)/i))) return 'https://www.youtube.com/'+m[1];
+    if((m=s.match(/youtube\.com\/(c\/[\w.\-]+)/i))) return 'https://www.youtube.com/'+m[1];
+    if((m=s.match(/youtube\.com\/(user\/[\w.\-]+)/i))) return 'https://www.youtube.com/'+m[1];
+    if((m=s.match(/^(@[\w.\-]+)$/))) return 'https://www.youtube.com/'+m[1];
+    return null; }
   function hostname(u){ try{ return new URL(u).hostname.replace(/^www\./,''); }catch(e){ return u; } }
   function escapeHtml(s){ return (s||'').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
   function strip(s){ var d=document.createElement('div'); d.innerHTML=s||''; var t=(d.textContent||'').replace(/\s+/g,' ').trim(); return t.length>180?t.slice(0,180)+'…':t; }
@@ -286,9 +292,12 @@
     $('sources').value.split(/\n+/).forEach(function(raw){ raw=raw.trim(); if(!raw) return;
       var label='', src=raw, bar=raw.indexOf('|');
       if(bar>=0){ var a=raw.slice(0,bar).trim(), b=raw.slice(bar+1).trim();
-        if(extractChannel(b)||extractId(b)){ label=a; src=b; } else if(extractChannel(a)||extractId(a)){ label=b; src=a; } }
+        if(extractChannel(b)||extractHandle(b)||extractId(b)){ label=a; src=b; }
+        else if(extractChannel(a)||extractHandle(a)||extractId(a)){ label=b; src=a; } }
       var ch=extractChannel(src);
       if(ch){ if(!seen['c:'+ch]){ seen['c:'+ch]=1; vids.push({channelId:ch, label:label}); } return; }
+      var hd=extractHandle(src);
+      if(hd){ if(!seen['h:'+hd]){ seen['h:'+hd]=1; vids.push({handleUrl:hd, label:label}); } return; }
       var id=extractId(src); if(id&&!seen[id]){ seen[id]=1; vids.push({id:id, label:label}); } });
     var rssUrls=[], rseen={};
     $('feeds').value.split(/\n+/).forEach(function(l){ l=l.trim(); if(/^https?:\/\//i.test(l)&&!rseen[l]){rseen[l]=1;rssUrls.push(l);} });
@@ -319,18 +328,19 @@
 
   /* ---------- tiles ---------- */
   function addVideoTile(spec, n){
-    var id=spec.id||null, channelId=spec.channelId||null, label=spec.label||'';
+    var id=spec.id||null, channelId=spec.channelId||null, handleUrl=spec.handleUrl||null, label=spec.label||'';
+    var liveish=channelId||handleUrl;
     var el=document.createElement('div'); el.className='tile video'; el.__idx=tiles.length; el.__n=n;
-    var nm=label?(' \u00b7 '+escapeHtml(label)):(channelId?' \u00b7 live':'');
+    var nm=label?(' \u00b7 '+escapeHtml(label)):(liveish?' \u00b7 live':'');
     el.innerHTML=
       '<div class="tbar"><span class="ch">CH '+(n+1)+nm+'</span>'+
         '<span class="tbar-right"><span class="promote">tap = main</span><span class="mutedtag">MUTED</span>'+
         '<span class="tally-badge"><span class="dot"></span>ON AIR</span></span></div>'+
       '<div class="screen"><div id="player-'+n+'"></div>'+
-        '<div class="overlay-msg">CH '+(n+1)+nm+(channelId?' offline<br>(waiting for the channel to go live)':' unavailable<br>(embedding disabled or stream offline)')+'</div></div>';
+        '<div class="overlay-msg">CH '+(n+1)+nm+(liveish?' offline<br>(waiting for the channel to go live)':' unavailable<br>(embedding disabled or stream offline)')+'</div></div>';
     el.addEventListener('click', function(){ setMain(el.__idx); });
     wall.appendChild(el);
-    tiles.push({kind:'youtube', videoId:id, channelId:channelId, player:null, ready:false, errored:false, title:'', label:label, el:el, __n:n});
+    tiles.push({kind:'youtube', videoId:id, channelId:channelId, handleUrl:handleUrl, player:null, ready:false, errored:false, title:'', label:label, el:el, __n:n});
   }
 
   function addWireTile(urls){
@@ -461,7 +471,24 @@
   }
 
   /* ---------- players ---------- */
-  function buildPlayers(){ tiles.forEach(function(t){ if(t.kind!=='youtube'||t.player) return; makePlayer(t); }); }
+  function buildPlayers(){ tiles.forEach(function(t){ if(t.kind!=='youtube'||t.player) return;
+    if(t.handleUrl && !t.channelId) resolveAndBuild(t); else makePlayer(t); }); }
+
+  // Resolve a @handle / c/ / user/ URL to a UC channel ID via a CORS proxy, then build the live-follow player.
+  async function resolveChannel(url){
+    var e=encodeURIComponent(url), tries=['https://api.allorigins.win/raw?url='+e, 'https://corsproxy.io/?url='+e];
+    for(var i=0;i<tries.length;i++){ try{
+      var r=await fetch(tries[i],{cache:'no-store'}); if(!r.ok) throw 0; var h=await r.text();
+      var m=h.match(/"channelId":"(UC[A-Za-z0-9_-]{22})"/)||h.match(/channel\/(UC[A-Za-z0-9_-]{22})/)||h.match(/"externalId":"(UC[A-Za-z0-9_-]{22})"/);
+      if(m) return m[1];
+    }catch(e2){} } return null;
+  }
+  async function resolveAndBuild(t){
+    var ov=t.el.querySelector('.overlay-msg'); if(ov) ov.innerHTML='Finding live stream\u2026'; t.el.classList.add('errored');
+    var id=await resolveChannel(t.handleUrl);
+    if(id){ t.channelId=id; t.el.classList.remove('errored'); if(t.el.isConnected) makePlayer(t); }
+    else if(ov){ ov.innerHTML='Couldn\u2019t resolve this channel.<br>Try a channel ID (UC\u2026) instead.'; }
+  }
 
   function makePlayer(t){
     if(t.channelId){
