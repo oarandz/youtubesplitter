@@ -108,14 +108,12 @@
   .feedlist{flex:1;min-height:0;display:flex;flex-direction:row;overflow-x:auto;overflow-y:hidden;align-items:stretch}
   .feedlist::-webkit-scrollbar{height:8px}
   .feedlist::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
-  .feeditem{position:relative;flex:0 0 250px;display:flex;flex-direction:column;padding:8px 11px;border-right:1px solid #20242b;text-decoration:none;color:var(--text)}
+  .feeditem{flex:0 0 250px;display:flex;flex-direction:column;padding:8px 11px;border-right:1px solid #20242b;text-decoration:none;color:var(--text)}
   .feeditem:hover{background:var(--panel-2)}
-  .feeditem::before{content:"";position:absolute;inset:0;opacity:0;pointer-events:none}
-  @keyframes flashpulse{0%,100%{opacity:0}50%{opacity:1}}
-  .feeditem.flash-red{border-top:2px solid var(--tally)}
-  .feeditem.flash-red::before{background:rgba(255,46,46,.26);animation:flashpulse 1s ease-in-out infinite}
-  .feeditem.flash-orange{border-top:2px solid var(--amber)}
-  .feeditem.flash-orange::before{background:rgba(255,176,46,.22);animation:flashpulse 1.2s ease-in-out infinite}
+  @keyframes flashred{0%,100%{background:rgba(255,46,46,0)}50%{background:rgba(255,46,46,.34)}}
+  @keyframes flashorange{0%,100%{background:rgba(255,176,46,0)}50%{background:rgba(255,176,46,.28)}}
+  .feeditem.flash-red{animation:flashred 1s ease-in-out infinite;border-top:2px solid var(--tally)}
+  .feeditem.flash-orange{animation:flashorange 1.2s ease-in-out infinite;border-top:2px solid var(--amber)}
   .feeditem .meta{display:flex;gap:7px;align-items:center;color:var(--dim);font-size:clamp(9px,calc(var(--wire-font)*0.32),16px);letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px;flex:0 0 auto}
   .feeditem .meta .src{font-weight:700;color:var(--text);background:var(--panel-2);border:1px solid var(--line-bright);padding:1px 5px;border-radius:3px;letter-spacing:.06em}
   .feeditem.flash-red .meta .src{background:var(--tally);border-color:var(--tally);color:#fff}
@@ -163,7 +161,8 @@
   @media (max-width:720px){ .keys{display:none} .desk-src{max-width:40vw} }
   @media (prefers-reduced-motion:reduce){
     .tally-badge .dot,.desk-onair .dot,.feedstat.updating .statdot{animation:none}
-    .feeditem.flash-red::before,.feeditem.flash-orange::before{animation:none;opacity:.65}
+    .feeditem.flash-red{animation:none;background:rgba(255,46,46,.18)}
+    .feeditem.flash-orange{animation:none;background:rgba(255,176,46,.18)}
   }
 </style>
 </head>
@@ -178,7 +177,7 @@
         <label class="fld field-gap" for="feeds">News feeds — RSS URL per line</label>
         <textarea id="feeds" spellcheck="false"></textarea>
         <div class="hint">
-          Click any channel (or press its number / the arrow keys) to make it the big main window — the rest tile as thumbnails. Drag the dividers between windows to resize them; the layout always fills the screen tidily. The wires bar merges all feeds, tagged by source, newest first, refreshing every 30 seconds: new headlines flash orange for 30 seconds, anything timestamped 5 minutes ago or less flashes red for the whole 5 minutes. Feeds use public CORS proxies (one per feed to spread load).
+          Click any channel (or press its number / the arrow keys) to make it the big main window — the rest tile as thumbnails. Name a video with <code>Sky News | https://…</code> on its line. To auto-follow a channel's <b>current</b> live stream (so it picks up the next show when they restart), give it a channel ID instead of a video link — e.g. <code>Sky News | channel:UCxxxx</code> or a <code>youtube.com/channel/UCxxxx</code> URL. Drag the dividers between windows to resize them. The wires bar merges all feeds, tagged by source, newest first, refreshing every 30 seconds: new headlines flash orange for 30s, anything timestamped within 5 minutes flashes red. Feeds use public CORS proxies (one per feed).
         </div>
         <div class="row">
           <button id="load" class="primary">Build the wall</button>
@@ -230,9 +229,9 @@
   var REFRESH_MS=30000, TICK_MS=30000, FLASH_TICK_MS=5000, ORANGE_MS=30000, RED_WINDOW_MS=300000;
 
   var DEFAULT_VIDEOS=
-    "https://www.youtube.com/watch?v=YDvsBbKfLPA\n"+
-    "https://www.youtube.com/watch?v=IggcSkJHJBo\n"+
-    "https://www.youtube.com/watch?v=eTIATpVxKbI";
+    "Sky News | https://www.youtube.com/watch?v=YDvsBbKfLPA\n"+
+    "GB News | https://www.youtube.com/watch?v=IggcSkJHJBo\n"+
+    "Times Radio | https://www.youtube.com/watch?v=eTIATpVxKbI";
   var DEFAULT_FEEDS=
     "https://feeds.bbci.co.uk/news/uk/rss.xml\n"+
     "https://feeds.skynews.com/feeds/rss/uk.xml\n"+
@@ -256,6 +255,12 @@
     if((m=raw.match(/\/embed\/([A-Za-z0-9_-]{11})/))) return m[1];
     if((m=raw.match(/\/shorts\/([A-Za-z0-9_-]{11})/))) return m[1];
     if((m=raw.match(/([A-Za-z0-9_-]{11})/))) return m[1]; return null; }
+  function extractChannel(s){ s=s.trim(); var m;
+    if((m=s.match(/live_stream\?channel=(UC[A-Za-z0-9_-]{22})/))) return m[1];
+    if((m=s.match(/\/channel\/(UC[A-Za-z0-9_-]{22})/))) return m[1];
+    if((m=s.match(/^channel:(UC[A-Za-z0-9_-]{22})$/i))) return m[1];
+    if((m=s.match(/^(UC[A-Za-z0-9_-]{22})$/))) return m[1];
+    return null; }
   function hostname(u){ try{ return new URL(u).hostname.replace(/^www\./,''); }catch(e){ return u; } }
   function escapeHtml(s){ return (s||'').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
   function strip(s){ var d=document.createElement('div'); d.innerHTML=s||''; var t=(d.textContent||'').replace(/\s+/g,' ').trim(); return t.length>180?t.slice(0,180)+'…':t; }
@@ -278,7 +283,13 @@
   function startBuild(){
     setErr("");
     var vids=[], seen={};
-    $('sources').value.split(/[\n,]+/).forEach(function(l){ var id=extractId(l); if(id&&!seen[id]){seen[id]=1;vids.push(id);} });
+    $('sources').value.split(/\n+/).forEach(function(raw){ raw=raw.trim(); if(!raw) return;
+      var label='', src=raw, bar=raw.indexOf('|');
+      if(bar>=0){ var a=raw.slice(0,bar).trim(), b=raw.slice(bar+1).trim();
+        if(extractChannel(b)||extractId(b)){ label=a; src=b; } else if(extractChannel(a)||extractId(a)){ label=b; src=a; } }
+      var ch=extractChannel(src);
+      if(ch){ if(!seen['c:'+ch]){ seen['c:'+ch]=1; vids.push({channelId:ch, label:label}); } return; }
+      var id=extractId(src); if(id&&!seen[id]){ seen[id]=1; vids.push({id:id, label:label}); } });
     var rssUrls=[], rseen={};
     $('feeds').value.split(/\n+/).forEach(function(l){ l=l.trim(); if(/^https?:\/\//i.test(l)&&!rseen[l]){rseen[l]=1;rssUrls.push(l);} });
     if(vids.length===0 && rssUrls.length===0){ setErr("Add at least one video source or RSS feed."); return; }
@@ -287,7 +298,7 @@
     tiles=[]; wall.innerHTML=""; mainIdx=-1; audioIdx=-1;
 
     var n=0;
-    vids.forEach(function(id){ addVideoTile(id, n++); });
+    vids.forEach(function(v){ addVideoTile(v, n++); });
     if(rssUrls.length) addWireTile(rssUrls);
     buildSplitters(); buildTransport();
 
@@ -298,25 +309,28 @@
 
     if(vids.length){ if(apiReady) buildPlayers(); else pendingBuild=true; }
     refreshAllFeeds();
-    [ '__rssTimer','__tickTimer','__flashTimer','__tpTimer' ].forEach(function(k){ if(window[k]) clearInterval(window[k]); });
+    [ '__rssTimer','__tickTimer','__flashTimer','__tpTimer','__liveTimer' ].forEach(function(k){ if(window[k]) clearInterval(window[k]); });
     window.__rssTimer=setInterval(refreshAllFeeds, REFRESH_MS);
     window.__tickTimer=setInterval(tickTimes, TICK_MS);
     window.__flashTimer=setInterval(refreshFlashes, FLASH_TICK_MS);
     window.__tpTimer=setInterval(updateTransport, 500);
+    window.__liveTimer=setInterval(liveWatch, 90000);
   }
 
   /* ---------- tiles ---------- */
-  function addVideoTile(id, n){
+  function addVideoTile(spec, n){
+    var id=spec.id||null, channelId=spec.channelId||null, label=spec.label||'';
     var el=document.createElement('div'); el.className='tile video'; el.__idx=tiles.length; el.__n=n;
+    var nm=label?(' \u00b7 '+escapeHtml(label)):(channelId?' \u00b7 live':'');
     el.innerHTML=
-      '<div class="tbar"><span class="ch">CH '+(n+1)+'</span>'+
+      '<div class="tbar"><span class="ch">CH '+(n+1)+nm+'</span>'+
         '<span class="tbar-right"><span class="promote">tap = main</span><span class="mutedtag">MUTED</span>'+
         '<span class="tally-badge"><span class="dot"></span>ON AIR</span></span></div>'+
       '<div class="screen"><div id="player-'+n+'"></div>'+
-        '<div class="overlay-msg">CH '+(n+1)+' unavailable<br>(embedding disabled or stream offline)</div></div>';
+        '<div class="overlay-msg">CH '+(n+1)+nm+(channelId?' offline<br>(waiting for the channel to go live)':' unavailable<br>(embedding disabled or stream offline)')+'</div></div>';
     el.addEventListener('click', function(){ setMain(el.__idx); });
     wall.appendChild(el);
-    tiles.push({kind:'youtube', videoId:id, player:null, ready:false, errored:false, title:'', el:el, __n:n});
+    tiles.push({kind:'youtube', videoId:id, channelId:channelId, player:null, ready:false, errored:false, title:'', label:label, el:el, __n:n});
   }
 
   function addWireTile(urls){
@@ -447,8 +461,29 @@
   }
 
   /* ---------- players ---------- */
-  function buildPlayers(){
-    tiles.forEach(function(t){ if(t.kind!=='youtube'||t.player) return;
+  function buildPlayers(){ tiles.forEach(function(t){ if(t.kind!=='youtube'||t.player) return; makePlayer(t); }); }
+
+  function makePlayer(t){
+    if(t.channelId){
+      var sc=t.el.querySelector('.screen');
+      var holder=sc.querySelector('#player-'+t.__n), old=sc.querySelector('iframe');
+      var ifr=document.createElement('iframe');
+      ifr.src='https://www.youtube.com/embed/live_stream?channel='+encodeURIComponent(t.channelId)+
+        '&enablejsapi=1&autoplay=1&mute=1&playsinline=1&controls=0&rel=0&modestbranding=1&iv_load_policy=3';
+      ifr.setAttribute('frameborder','0'); ifr.setAttribute('allowfullscreen','');
+      ifr.allow='autoplay; encrypted-media; picture-in-picture';
+      if(holder) holder.parentNode.replaceChild(ifr, holder);
+      else if(old) old.parentNode.replaceChild(ifr, old);
+      else sc.insertBefore(ifr, sc.firstChild);
+      t.player=new YT.Player(ifr, { events:{
+        'onReady':function(e){ t.ready=true; t.el.classList.remove('errored');
+          try{ e.target.mute(); e.target.setVolume(volume); e.target.playVideo(); }catch(_){}
+          try{ var d=e.target.getVideoData&&e.target.getVideoData(); if(d&&d.title&&!t.label){ t.title=d.title; renderDesk(); } }catch(_){}
+          applyAudioAndAir(); applyResCap(); },
+        'onStateChange':function(e){ if(e.data===0) scheduleReload(t); },   // 0 = ENDED -> a show finished; re-resolve live
+        'onError':function(){ scheduleReload(t); }
+      }});
+    } else {
       t.player=new YT.Player('player-'+t.__n, {
         videoId:t.videoId,
         playerVars:{autoplay:1,mute:1,controls:0,rel:0,playsinline:1,modestbranding:1,disablekb:1,iv_load_policy:3},
@@ -459,8 +494,18 @@
           'onError':function(){ t.errored=true; t.el.classList.add('errored'); renderDesk(); }
         }
       });
-    });
+    }
   }
+  // When a channel ends/swaps a stream, re-resolve its current live broadcast (throttled so an offline channel doesn't loop).
+  function scheduleReload(t){
+    if(!t.channelId) return; var now=Date.now();
+    if(t.lastReload && now-t.lastReload<25000) return; t.lastReload=now;
+    setTimeout(function(){ if(!t.el||!t.el.isConnected) return;
+      try{ t.player&&t.player.destroy(); }catch(e){} t.player=null; t.ready=false; makePlayer(t); }, 4000);
+  }
+  function liveWatch(){ if(typeof YT==='undefined') return;
+    tiles.forEach(function(t){ if(!t.channelId||!t.player) return;
+      try{ var s=t.player.getPlayerState(); if(s===0||s===5) scheduleReload(t); }catch(e){} }); }
 
   /* ---------- main / audio ---------- */
   function applyAudioAndAir(){
@@ -493,7 +538,7 @@
     var a=audioIdx>=0?tiles[audioIdx]:null;
     $('onair').classList.toggle('muted', muted||!a);
     $('onairTxt').textContent = !a?'NO AUDIO':(muted?'AUDIO MUTED':'ON AIR');
-    $('deskSrc').textContent = a ? ('CH '+(audioIdx+1)+(a.errored?' · unavailable':(a.title?' · '+a.title:''))) : 'feeds only — no audio source';
+    $('deskSrc').textContent = a ? ('CH '+(audioIdx+1)+(a.errored?' · unavailable':((a.label||a.title)?' · '+(a.label||a.title):''))) : 'feeds only — no audio source';
     var bars=$('deskBars'); bars.innerHTML=barsHtml(volume, muted||!a).replace(/^<div[^>]*>|<\/div>$/g,''); bars.className='bars'+((muted||!a)?' off':'');
   }
   var toastT; function showToast(h){ toast.innerHTML=h; toast.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(function(){ toast.classList.remove('show'); },900); }
