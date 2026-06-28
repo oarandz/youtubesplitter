@@ -177,7 +177,7 @@
         <label class="fld field-gap" for="feeds">News feeds — RSS URL per line</label>
         <textarea id="feeds" spellcheck="false"></textarea>
         <div class="hint">
-          Click any channel (or press its number / the arrow keys) to make it the big main window — the rest tile as thumbnails. Name a video with <code>Sky News | https://…</code> on its line. To auto-follow a channel's <b>current</b> live stream (so it picks up the next show when they restart), give it the channel instead of a video link — a <code>youtube.com/@handle</code> link, a <code>channel:UCxxxx</code> ID, or a <code>youtube.com/channel/UCxxxx</code> URL all work (handles are resolved automatically). Drag the dividers between windows to resize them. The wires bar merges all feeds, tagged by source, newest first, refreshing every 30 seconds: new headlines flash orange for 30s, anything timestamped within 5 minutes flashes red. Feeds use public CORS proxies (one per feed).
+          Click any channel (or press its number / the arrow keys) to make it the big main window — the rest tile as thumbnails. Give each line a direct live link for instant, reliable playback, e.g. <code>Sky News | https://youtube.com/watch?v=…</code>. To <b>auto-follow</b> a channel's current live stream (so it picks up the next show when they restart, and catches a channel like Number 10 the moment it goes live), use <code>Name | channel:UCxxxx</code> — but this needs a free YouTube Data API key pasted into <code>YT_API_KEY</code> at the top of the file, because YouTube no longer lets a browser find the live video without one. No key = use direct links. Drag the dividers between windows to resize them. The wires bar merges all feeds, tagged by source, newest first, refreshing every 30 seconds: new headlines flash orange for 30s, anything timestamped within 5 minutes flashes red. Feeds use public CORS proxies (one per feed).
         </div>
         <div class="row">
           <button id="load" class="primary">Build the wall</button>
@@ -228,10 +228,16 @@
   var split=null;                       // active splitter drag
   var REFRESH_MS=30000, TICK_MS=30000, FLASH_TICK_MS=5000, ORANGE_MS=30000, RED_WINDOW_MS=300000;
 
+  // Paste a free YouTube Data API v3 key between the quotes for reliable channel auto-follow (incl. catching Number 10 going live).
+  // Get one at console.cloud.google.com -> enable "YouTube Data API v3" -> Credentials -> API key. Leave blank to use direct links only.
+  var YT_API_KEY="";
+
+  // Lines with a direct video link play instantly. Lines with "channel:UC..." auto-follow that channel's current live stream,
+  // but channel auto-follow ONLY works when YT_API_KEY is set above (YouTube no longer lets the live video be found without it).
   var DEFAULT_VIDEOS=
-    "Sky News | channel:UCoMdktPbSTixAyNGwb-UYkQ\n"+
-    "GB News | channel:UC0vn8ISa4LKMunLbzaXLnOQ\n"+
-    "Times Radio | channel:UCTjDhFuGXlhx9Us0gq0VK2w\n"+
+    "Sky News | https://www.youtube.com/watch?v=YDvsBbKfLPA\n"+
+    "GB News | https://www.youtube.com/watch?v=QliL4CGc7iY\n"+
+    "Times Radio | https://www.youtube.com/watch?v=eTIATpVxKbI\n"+
     "Number 10 | channel:UC8o7mIMg3mmO9-dx3e2iFgw";
   var DEFAULT_FEEDS=
     "https://feeds.bbci.co.uk/news/uk/rss.xml\n"+
@@ -488,21 +494,21 @@
     });
   }
 
-  // Find a channel's CURRENT live video ID by reading its /live page through a CORS proxy.
+  // Find a channel's CURRENT live video ID via the YouTube Data API (needs YT_API_KEY). Returns null if no key or not live.
   async function resolveLiveVideo(t){
-    var liveUrl = t.channelId ? ('https://www.youtube.com/channel/'+t.channelId+'/live')
-                : t.handleUrl ? (t.handleUrl.replace(/\/$/,'')+'/live') : null;
-    if(!liveUrl) return null;
-    var e=encodeURIComponent(liveUrl), tries=['https://api.allorigins.win/raw?url='+e,'https://corsproxy.io/?url='+e];
-    for(var i=0;i<tries.length;i++){ try{
-      var r=await fetch(tries[i],{cache:'no-store'}); if(!r.ok) throw 0; var h=await r.text();
-      var liveNow = h.indexOf('hlsManifestUrl')>=0 || h.indexOf('"isLiveNow":true')>=0 || h.indexOf('BADGE_STYLE_TYPE_LIVE_NOW')>=0;
-      if(!liveNow) continue;
-      var m = h.match(/"videoDetails":\{"videoId":"([\w-]{11})"/)
-           || h.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([\w-]{11})"/)
-           || h.match(/watch\?v=([\w-]{11})/);
-      if(m) return m[1];
-    }catch(e2){} }
+    if(!YT_API_KEY) return null;
+    var cid=t.channelId;
+    if(!cid && t.handleUrl){
+      try{ var hm=t.handleUrl.match(/@([A-Za-z0-9_.-]+)/);
+        if(hm){ var cr=await fetch('https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=@'+encodeURIComponent(hm[1])+'&key='+YT_API_KEY,{cache:'no-store'});
+          if(cr.ok){ var cj=await cr.json(); if(cj.items&&cj.items[0]) cid=t.channelId=cj.items[0].id; } } }catch(e){}
+    }
+    if(!cid) return null;
+    try{
+      var u='https://www.googleapis.com/youtube/v3/search?part=id&channelId='+cid+'&eventType=live&type=video&maxResults=1&key='+YT_API_KEY;
+      var r=await fetch(u,{cache:'no-store'}); if(!r.ok) return null; var j=await r.json();
+      if(j.items&&j.items.length&&j.items[0].id&&j.items[0].id.videoId) return j.items[0].id.videoId;
+    }catch(e){}
     return null;
   }
 
@@ -510,11 +516,13 @@
   async function refreshLive(t, initial){
     var now=Date.now();
     if(!initial && t.lastReload && now-t.lastReload<20000) return; t.lastReload=now;
-    if(initial && !t.player){ var ov=t.el.querySelector('.overlay-msg'); if(ov) ov.innerHTML='Finding live stream\u2026'; t.el.classList.add('errored'); }
+    if(initial && !t.player && YT_API_KEY){ var ov=t.el.querySelector('.overlay-msg'); if(ov) ov.innerHTML='Finding live stream\u2026'; t.el.classList.add('errored'); }
     var id;
     try{ id=await resolveLiveVideo(t); }catch(e){ id=null; }
-    if(!id){ if(!t.player){ var o2=t.el.querySelector('.overlay-msg');
-        if(o2) o2.innerHTML='CH '+(t.__n+1)+(t.label?(' \u00b7 '+escapeHtml(t.label)):'')+' offline<br>(waiting for the channel to go live)';
+    if(!id){ if(!t.player){ var o2=t.el.querySelector('.overlay-msg'); var nm='CH '+(t.__n+1)+(t.label?(' \u00b7 '+escapeHtml(t.label)):'');
+        if(o2) o2.innerHTML = YT_API_KEY
+          ? (nm+' offline<br>(waiting for the channel to go live)')
+          : (nm+'<br><span style="opacity:.8">add a YouTube API key (top of file) to auto-follow,<br>or give this line a live video link</span>');
         t.el.classList.add('errored'); } return; }
     if(t.player && t.ready){
       if(t.liveId!==id){ t.liveId=id; t.el.classList.remove('errored');
@@ -536,8 +544,8 @@
       }
     });
   }
-  // Only re-check channels that aren't currently playing (keeps proxy load low; catches offline->live and missed ends).
-  function liveWatch(){ if(typeof YT==='undefined') return;
+  // Re-check channels that aren't currently playing (catches offline->live and missed ends). No-op without an API key.
+  function liveWatch(){ if(typeof YT==='undefined'||!YT_API_KEY) return;
     tiles.forEach(function(t){ if(!(t.channelId||t.handleUrl)) return;
       var playing=false; try{ playing = t.player && t.player.getPlayerState && t.player.getPlayerState()===1; }catch(e){}
       if(!playing) refreshLive(t,false); }); }
