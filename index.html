@@ -6,145 +6,108 @@
 <title>Video Wall — multiview gallery</title>
 <style>
   :root{
-    --bg:#0d0f12;
-    --panel:#16191e;
-    --panel-2:#1d2127;
-    --line:#2a2f37;
-    --line-bright:#3a414b;
-    --text:#e8eaed;
-    --muted:#8a9099;
-    --dim:#5a616b;
-    --tally:#ff2e2e;        /* on-air / live audio */
-    --tally-glow:rgba(255,46,46,.45);
-    --amber:#ffb02e;        /* meters */
-    --green:#39d98a;
+    --bg:#0d0f12; --panel:#16191e; --panel-2:#1d2127;
+    --line:#2a2f37; --line-bright:#3a414b;
+    --text:#e8eaed; --muted:#8a9099; --dim:#5a616b;
+    --tally:#ff2e2e; --tally-glow:rgba(255,46,46,.45);
+    --amber:#ffb02e; --green:#39d98a;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
-  body{
-    background:var(--bg);
-    color:var(--text);
-    font-family:var(--mono);
-    font-size:13px;
-    overflow:hidden;
-    -webkit-font-smoothing:antialiased;
-  }
+  body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;overflow:hidden;-webkit-font-smoothing:antialiased}
+
   /* ---------- SETUP ---------- */
-  #setup{
-    position:fixed;inset:0;
-    display:flex;align-items:center;justify-content:center;
-    padding:24px;
-    background:
-      radial-gradient(1200px 600px at 50% -10%,rgba(255,46,46,.06),transparent 60%),
-      var(--bg);
-    z-index:50;
-  }
-  .card{
-    width:min(640px,100%);
-    background:var(--panel);
-    border:1px solid var(--line);
-    border-radius:10px;
-    overflow:hidden;
-  }
-  .card-head{
-    padding:18px 22px;
-    border-bottom:1px solid var(--line);
-    display:flex;align-items:baseline;gap:14px;
-  }
-  .card-head h1{
-    font-size:15px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
-  }
+  #setup{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;
+    background:radial-gradient(1200px 600px at 50% -10%,rgba(255,46,46,.06),transparent 60%),var(--bg);
+    z-index:50;overflow:auto}
+  .card{width:min(640px,100%);background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:auto}
+  .card-head{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:14px}
+  .card-head h1{font-size:15px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
   .card-head .sub{color:var(--muted);font-size:11px;letter-spacing:.06em}
   .card-body{padding:22px}
-  label.fld{display:block;color:var(--muted);font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px}
-  textarea{
-    width:100%;height:170px;resize:vertical;
-    background:var(--bg);color:var(--text);
-    border:1px solid var(--line);border-radius:7px;
-    padding:12px 14px;font-family:var(--mono);font-size:13px;line-height:1.6;
-  }
+  label.fld{display:block;color:var(--muted);font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin:0 0 8px}
+  label.fld + label.fld{margin-top:18px}
+  .field-gap{margin-top:18px}
+  textarea{width:100%;height:120px;resize:vertical;background:var(--bg);color:var(--text);
+    border:1px solid var(--line);border-radius:7px;padding:12px 14px;font-family:var(--mono);font-size:13px;line-height:1.6}
   textarea:focus{outline:none;border-color:var(--line-bright)}
   .hint{color:var(--dim);font-size:11px;line-height:1.7;margin-top:12px}
   .hint code{color:var(--muted);background:var(--panel-2);padding:1px 5px;border-radius:4px}
   .row{display:flex;gap:10px;margin-top:18px;align-items:center}
-  button{
-    font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;
-    cursor:pointer;border-radius:7px;border:1px solid var(--line);
-    background:var(--panel-2);color:var(--text);padding:11px 18px;
-    transition:border-color .15s,background .15s,color .15s;
-  }
+  button{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;
+    border-radius:7px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);padding:11px 18px;
+    transition:border-color .15s,background .15s,color .15s}
   button:hover{border-color:var(--line-bright)}
   button.primary{background:var(--tally);border-color:var(--tally);color:#fff;font-weight:700}
   button.primary:hover{filter:brightness(1.08)}
-  button:disabled{opacity:.4;cursor:default}
   .err{color:var(--tally);font-size:11px;margin-top:10px;min-height:14px;letter-spacing:.04em}
 
   /* ---------- WALL ---------- */
   #stage{display:none;flex-direction:column;height:100%}
-  #wall{
-    flex:1;display:grid;gap:8px;padding:8px;
-    grid-template-columns:repeat(var(--cols,4),1fr);
-    grid-auto-rows:1fr;
-    grid-auto-flow:dense;
-    min-height:0;
-  }
-  .tile{
-    position:relative;background:#000;border:1px solid var(--line);
-    border-radius:6px;overflow:hidden;min-height:0;cursor:pointer;
-    transition:border-color .15s;
-  }
+  #wall{flex:1;display:grid;gap:8px;padding:8px;grid-template-columns:repeat(var(--cols,4),1fr);
+    grid-auto-rows:1fr;grid-auto-flow:dense;min-height:0}
+  .tile{position:relative;background:#000;border:1px solid var(--line);border-radius:6px;overflow:hidden;min-height:0;cursor:pointer;transition:border-color .15s}
   .tile:hover{border-color:var(--line-bright)}
+  .tile.big{border-color:var(--line-bright);grid-column:span var(--span,2);grid-row:span var(--span,2);order:-1}
+  .tile.air{border-color:var(--tally);box-shadow:0 0 0 1px var(--tally),0 0 22px var(--tally-glow)}
+
+  /* video chrome */
   .tile .screen{position:absolute;inset:0}
   .tile iframe{width:100%;height:100%;display:block;border:0;pointer-events:none}
-  .tile.live{
-    border-color:var(--tally);
-    box-shadow:0 0 0 1px var(--tally),0 0 22px var(--tally-glow);
-    grid-column:span var(--span,2);
-    grid-row:span var(--span,2);
-    order:-1;
-  }
-  /* label / tally chrome */
-  .chrome{
-    position:absolute;inset:0;pointer-events:none;
-    display:flex;flex-direction:column;justify-content:space-between;
-  }
+  .chrome{position:absolute;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between}
   .topbar{display:flex;justify-content:space-between;align-items:flex-start;padding:8px}
-  .ch{
-    background:rgba(0,0,0,.6);backdrop-filter:blur(4px);
-    border:1px solid var(--line);border-radius:5px;
-    padding:4px 8px;font-size:11px;letter-spacing:.1em;color:var(--muted);
-  }
-  .tile.live .ch{color:var(--text);border-color:var(--line-bright)}
-  .tally-badge{
-    display:none;align-items:center;gap:6px;
-    background:var(--tally);color:#fff;font-weight:700;font-size:10px;letter-spacing:.14em;
-    padding:4px 9px;border-radius:5px;
-  }
-  .tile.live .tally-badge{display:inline-flex}
+  .topbar.end{justify-content:flex-end;align-items:flex-end}
+  .ch{background:rgba(0,0,0,.6);backdrop-filter:blur(4px);border:1px solid var(--line);border-radius:5px;
+    padding:4px 8px;font-size:11px;letter-spacing:.1em;color:var(--muted)}
+  .tile.big .ch{color:var(--text);border-color:var(--line-bright)}
+  .tally-badge{display:none;align-items:center;gap:6px;background:var(--tally);color:#fff;font-weight:700;
+    font-size:10px;letter-spacing:.14em;padding:4px 9px;border-radius:5px}
+  .tile.air .tally-badge{display:inline-flex}
   .tally-badge .dot{width:7px;height:7px;border-radius:50%;background:#fff;animation:pulse 1.4s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
-  .mutedtag{
-    display:none;background:rgba(0,0,0,.6);border:1px solid var(--line);border-radius:5px;
-    padding:4px 8px;font-size:10px;letter-spacing:.12em;color:var(--amber);
-  }
-  .tile.live.is-muted .mutedtag{display:inline-block}
-  .tile.live.is-muted .tally-badge{background:#5a616b}
-  .tile.live.is-muted .tally-badge .dot{animation:none;opacity:.5}
-  .overlay-msg{
-    position:absolute;inset:0;display:none;align-items:center;justify-content:center;
-    text-align:center;padding:14px;color:var(--muted);font-size:11px;letter-spacing:.06em;
-    background:repeating-linear-gradient(45deg,#101216,#101216 10px,#0c0e11 10px,#0c0e11 20px);
-  }
+  .mutedtag{display:none;background:rgba(0,0,0,.6);border:1px solid var(--line);border-radius:5px;
+    padding:4px 8px;font-size:10px;letter-spacing:.12em;color:var(--amber)}
+  .tile.air.is-muted .mutedtag{display:inline-block}
+  .tile.air.is-muted .tally-badge{background:#5a616b}
+  .tile.air.is-muted .tally-badge .dot{animation:none;opacity:.5}
+  .overlay-msg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;
+    padding:14px;color:var(--muted);font-size:11px;letter-spacing:.06em;
+    background:repeating-linear-gradient(45deg,#101216,#101216 10px,#0c0e11 10px,#0c0e11 20px)}
   .tile.errored .overlay-msg{display:flex}
   .tile.errored .screen{display:none}
 
-  /* ---------- DESK / STATUS BAR ---------- */
-  #desk{
-    flex:0 0 auto;display:flex;align-items:center;gap:18px;
-    padding:10px 14px;border-top:1px solid var(--line);background:var(--panel);
-    flex-wrap:wrap;
-  }
+  /* ---------- RSS TILE ---------- */
+  .tile.rss{background:var(--panel);display:flex;flex-direction:column;cursor:default}
+  .tile.rss:hover{border-color:var(--line-bright)}
+  .feedhead{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;
+    padding:9px 11px;border-bottom:1px solid var(--line);cursor:pointer}
+  .feedtitle{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .feedstat{display:flex;align-items:center;gap:6px;flex:0 0 auto;color:var(--dim);font-size:9px;letter-spacing:.1em;text-transform:uppercase}
+  .statdot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+  .feedstat.updating .statdot{background:var(--amber);animation:pulse 1.2s infinite}
+  .feedstat.ok .statdot{background:var(--green)}
+  .feedstat.fail .statdot{background:var(--tally)}
+  .feedlist{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
+  .feedlist::-webkit-scrollbar{width:8px}
+  .feedlist::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+  .feeditem{display:block;padding:8px 11px;border-bottom:1px solid #20242b;text-decoration:none;color:var(--text)}
+  .feeditem:hover{background:var(--panel-2)}
+  @keyframes flashred{0%,100%{background:rgba(255,46,46,0)}50%{background:rgba(255,46,46,.24)}}
+  .feeditem.flash{animation:flashred 1s ease-in-out infinite;border-left:2px solid var(--tally);padding-left:9px}
+  .feeditem .meta{display:flex;gap:7px;align-items:center;color:var(--dim);font-size:9px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px}
+  .feeditem .meta .src{font-weight:700;color:var(--text);background:var(--panel-2);border:1px solid var(--line-bright);padding:1px 5px;border-radius:3px;letter-spacing:.06em}
+  .feeditem.flash .meta .src{background:var(--tally);border-color:var(--tally);color:#fff}
+  .feeditem .ttl{font-size:12px;line-height:1.4;color:var(--text)}
+  .feeditem .snippet{display:none;font-size:11px;line-height:1.5;color:var(--muted);margin-top:5px}
+  .tile.rss.big .feeditem .snippet{display:block}
+  .feedempty{padding:16px 12px;color:var(--dim);font-size:11px;letter-spacing:.04em}
+  .rss-ch{position:absolute;top:8px;right:8px;z-index:3;pointer-events:none}
+
+  /* ---------- DESK ---------- */
+  #desk{flex:0 0 auto;display:flex;align-items:center;gap:18px;padding:10px 14px;border-top:1px solid var(--line);
+    background:var(--panel);flex-wrap:wrap}
   .desk-onair{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:.14em;font-size:12px}
   .desk-onair .dot{width:9px;height:9px;border-radius:50%;background:var(--tally);box-shadow:0 0 10px var(--tally-glow);animation:pulse 1.4s infinite}
   .desk-onair.muted{color:var(--muted)}
@@ -154,338 +117,390 @@
   .meter .lbl{color:var(--dim);font-size:10px;letter-spacing:.14em}
   .bars{display:flex;gap:2px}
   .bars i{width:5px;height:15px;background:var(--line);border-radius:1px}
-  .bars i.on{background:var(--green)}
-  .bars i.on.hot{background:var(--amber)}
-  .bars i.on.peak{background:var(--tally)}
+  .bars i.on{background:var(--green)} .bars i.on.hot{background:var(--amber)} .bars i.on.peak{background:var(--tally)}
   .bars.off i.on{background:var(--dim)}
   .spacer{flex:1}
   .keys{display:flex;gap:14px;flex-wrap:wrap;color:var(--dim);font-size:10px;letter-spacing:.06em}
   .keys b{color:var(--muted);font-weight:600}
-  kbd{
-    display:inline-block;background:var(--panel-2);border:1px solid var(--line);border-bottom-width:2px;
-    border-radius:4px;padding:1px 5px;color:var(--text);font-family:var(--mono);font-size:10px;margin-right:3px;
-  }
+  kbd{display:inline-block;background:var(--panel-2);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;
+    padding:1px 5px;color:var(--text);font-family:var(--mono);font-size:10px;margin-right:3px}
   .desk-btn{padding:7px 12px;font-size:10px}
 
-  /* toast for volume / actions */
-  #toast{
-    position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-    background:rgba(0,0,0,.78);border:1px solid var(--line-bright);border-radius:10px;
-    padding:16px 22px;font-size:14px;letter-spacing:.06em;z-index:40;
-    opacity:0;pointer-events:none;transition:opacity .12s;
-    display:flex;flex-direction:column;align-items:center;gap:10px;min-width:180px;
-  }
+  #toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.78);
+    border:1px solid var(--line-bright);border-radius:10px;padding:16px 22px;font-size:14px;letter-spacing:.06em;z-index:40;
+    opacity:0;pointer-events:none;transition:opacity .12s;display:flex;flex-direction:column;align-items:center;gap:10px;min-width:180px}
   #toast.show{opacity:1}
   #toast .big{font-size:20px;font-weight:700;letter-spacing:.1em}
   #toast .bars i{height:18px}
 
   @media (max-width:720px){
     #wall{--cols:1 !important}
-    .tile.live{--span:1;grid-column:span 1;grid-row:span 1}
+    .tile.big{--span:1;grid-column:span 1;grid-row:span 1}
     .keys{display:none}
     .desk-src{max-width:40vw}
   }
   @media (prefers-reduced-motion:reduce){
-    .tally-badge .dot,.desk-onair .dot{animation:none}
+    .tally-badge .dot,.desk-onair .dot,.feedstat.updating .statdot{animation:none}
+    .feeditem.flash{animation:none;background:rgba(255,46,46,.16)}
   }
 </style>
 </head>
 <body>
 
-  <!-- SETUP -->
   <div id="setup">
     <div class="card">
-      <div class="card-head">
-        <h1>Video Wall</h1>
-        <span class="sub">multiview gallery · keyboard mixer</span>
-      </div>
+      <div class="card-head"><h1>Video Wall</h1><span class="sub">multiview gallery · keyboard mixer · live feeds</span></div>
       <div class="card-body">
-        <label class="fld" for="sources">Sources — one per line</label>
+        <label class="fld" for="sources">Video sources — one per line</label>
         <textarea id="sources" spellcheck="false" placeholder="https://www.youtube.com/watch?v=jfKfPfyJRdk&#10;https://youtu.be/...&#10;dQw4w9WgXcQ"></textarea>
+
+        <label class="fld field-gap" for="feeds">News feeds — RSS URL per line</label>
+        <textarea id="feeds" spellcheck="false" placeholder="https://feeds.bbci.co.uk/news/rss.xml&#10;https://www.theguardian.com/uk/rss"></textarea>
+
         <div class="hint">
-          Paste YouTube links or raw IDs. Accepts <code>watch?v=</code>, <code>youtu.be/</code>,
-          <code>/live/</code>, <code>/embed/</code>, <code>/shorts/</code> and bare 11-char IDs.
-          Live streams work the same way. A channel page like <code>/@handle/live</code> won't
-          work — use the actual stream's video link.
+          Video accepts <code>watch?v=</code>, <code>youtu.be/</code>, <code>/live/</code>, <code>/embed/</code>, <code>/shorts/</code> or bare IDs.
+          All RSS feeds are merged into one wire, tagged by source, newest first. New items flash red for 10 seconds. Feeds are fetched through a public CORS proxy — if the wire stays on "failed", the proxy is likely rate-limited or a URL isn't a valid feed.
         </div>
         <div class="row">
           <button id="load" class="primary">Build the wall</button>
-          <button id="demo">Load demo feeds</button>
+          <button id="demo">Reset to defaults</button>
         </div>
         <div class="err" id="setupErr"></div>
       </div>
     </div>
   </div>
 
-  <!-- WALL -->
   <div id="stage">
     <div id="wall"></div>
     <div id="desk">
       <div class="desk-onair" id="onair"><span class="dot"></span><span id="onairTxt">ON AIR</span></div>
       <div class="desk-src" id="deskSrc">CH 1</div>
-      <div class="meter">
-        <span class="lbl">VOL</span>
-        <div class="bars" id="deskBars"></div>
-      </div>
+      <div class="meter"><span class="lbl">VOL</span><div class="bars" id="deskBars"></div></div>
       <div class="spacer"></div>
       <div class="keys">
-        <span><b><kbd>←</kbd><kbd>→</kbd></b>cycle air</span>
-        <span><b><kbd>1</kbd>–<kbd>9</kbd></b>take</span>
-        <span><b><kbd>↑</kbd><kbd>↓</kbd></b>volume</span>
+        <span><b><kbd>&larr;</kbd><kbd>&rarr;</kbd></b>cycle</span>
+        <span><b><kbd>1</kbd>&ndash;<kbd>9</kbd></b>select</span>
+        <span><b><kbd>&uarr;</kbd><kbd>&darr;</kbd></b>volume</span>
         <span><b><kbd>M</kbd></b>mute</span>
         <span><b><kbd>Space</kbd></b>play/pause</span>
+        <span><b><kbd>R</kbd></b>refresh feeds</span>
         <span><b><kbd>F</kbd></b>full</span>
       </div>
       <button class="desk-btn" id="edit">Edit sources</button>
     </div>
   </div>
 
-  <!-- toast -->
   <div id="toast"></div>
 
 <script>
 (function(){
   "use strict";
 
-  var feeds = [];          // {videoId, player, ready, errored, el, chEl, srcEl}
-  var live = 0;
-  var volume = 70;
-  var muted = false;
-  var apiReady = false;
-  var pendingBuild = false;
+  var tiles = [];           // {kind:'youtube'|'rss', el, ...}
+  var focus = 0;            // enlarged tile
+  var audioIdx = -1;        // video tile with sound
+  var volume = 70, muted = false;
+  var apiReady = false, pendingBuild = false;
+  var REFRESH_MS = 120000, TICK_MS = 30000, FLASH_MS = 10000;
 
-  /* ---- YouTube IFrame API ---- */
-  window.onYouTubeIframeAPIReady = function(){
-    apiReady = true;
-    if(pendingBuild){ pendingBuild = false; buildPlayers(); }
-  };
-  (function loadAPI(){
-    var s = document.createElement('script');
-    s.src = "https://www.youtube.com/iframe_api";
-    s.onerror = function(){ setErr("Couldn't reach YouTube. Check the connection and that this file is opened in a normal browser tab."); };
-    document.head.appendChild(s);
-  })();
+  var DEFAULT_VIDEOS =
+    "https://www.youtube.com/watch?v=YDvsBbKfLPA\n"+
+    "https://www.youtube.com/watch?v=IggcSkJHJBo\n"+
+    "https://www.youtube.com/watch?v=eTIATpVxKbI";
+  var DEFAULT_FEEDS =
+    "https://feeds.bbci.co.uk/news/uk/rss.xml\n"+
+    "https://feeds.skynews.com/feeds/rss/uk.xml\n"+
+    "https://weather.metoffice.gov.uk/public/data/PWSCache/WarningsRSS/Region/uk";
 
-  /* ---- URL / ID parsing ---- */
+  /* YouTube API */
+  window.onYouTubeIframeAPIReady = function(){ apiReady = true; if(pendingBuild){ pendingBuild=false; buildPlayers(); } };
+  (function(){ var s=document.createElement('script'); s.src="https://www.youtube.com/iframe_api";
+    s.onerror=function(){ setErr("Couldn't reach YouTube. Open this file in a normal browser tab with a connection."); };
+    document.head.appendChild(s); })();
+
+  var $=function(id){return document.getElementById(id);};
+  var setup=$('setup'), stage=$('stage'), wall=$('wall'), setupErr=$('setupErr'), toast=$('toast');
+  function setErr(t){ setupErr.textContent=t||""; }
+
+  /* parsing */
   function extractId(raw){
-    raw = raw.trim();
-    if(!raw) return null;
-    if(/^[A-Za-z0-9_-]{11}$/.test(raw)) return raw;     // bare id
+    raw=raw.trim(); if(!raw) return null;
+    if(/^[A-Za-z0-9_-]{11}$/.test(raw)) return raw;
     var m;
-    m = raw.match(/[?&]v=([A-Za-z0-9_-]{11})/);          if(m) return m[1];
-    m = raw.match(/youtu\.be\/([A-Za-z0-9_-]{11})/);     if(m) return m[1];
-    m = raw.match(/\/live\/([A-Za-z0-9_-]{11})/);        if(m) return m[1];
-    m = raw.match(/\/embed\/([A-Za-z0-9_-]{11})/);       if(m) return m[1];
-    m = raw.match(/\/shorts\/([A-Za-z0-9_-]{11})/);      if(m) return m[1];
-    m = raw.match(/([A-Za-z0-9_-]{11})/);                if(m) return m[1]; // last resort
+    if((m=raw.match(/[?&]v=([A-Za-z0-9_-]{11})/))) return m[1];
+    if((m=raw.match(/youtu\.be\/([A-Za-z0-9_-]{11})/))) return m[1];
+    if((m=raw.match(/\/live\/([A-Za-z0-9_-]{11})/))) return m[1];
+    if((m=raw.match(/\/embed\/([A-Za-z0-9_-]{11})/))) return m[1];
+    if((m=raw.match(/\/shorts\/([A-Za-z0-9_-]{11})/))) return m[1];
+    if((m=raw.match(/([A-Za-z0-9_-]{11})/))) return m[1];
     return null;
   }
+  function hostname(u){ try{ return new URL(u).hostname.replace(/^www\./,''); }catch(e){ return u; } }
+  function escapeHtml(s){ return (s||'').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function strip(s){ var d=document.createElement('div'); d.innerHTML=s||''; var t=(d.textContent||'').replace(/\s+/g,' ').trim(); return t.length>180?t.slice(0,180)+'…':t; }
+  function txt(n){ return n?n.textContent.trim():''; }
+  function ago(d){ var t=new Date(d).getTime(); if(isNaN(t)) return ''; var s=Math.max(0,(Date.now()-t)/1000);
+    if(s<60) return 'now'; if(s<3600) return Math.floor(s/60)+'m'; if(s<86400) return Math.floor(s/3600)+'h'; return Math.floor(s/86400)+'d'; }
 
-  /* ---- DOM refs ---- */
-  var $ = function(id){ return document.getElementById(id); };
-  var setup = $('setup'), stage = $('stage'), wall = $('wall');
-  var setupErr = $('setupErr'), toast = $('toast');
-
-  function setErr(t){ setupErr.textContent = t || ""; }
-
-  /* ---- build ---- */
+  /* buttons */
   $('load').addEventListener('click', startBuild);
-  $('demo').addEventListener('click', function(){
-    $('sources').value =
-      "https://www.youtube.com/watch?v=jfKfPfyJRdk\n" +   // lofi girl
-      "https://www.youtube.com/watch?v=4xDzrJKXOOY\n" +   // synthwave radio
-      "https://www.youtube.com/watch?v=zhDwjnYZiCo\n" +   // lofi sleep
-      "https://www.youtube.com/watch?v=Na0w3Mz46GA";      // chillhop
-    setErr("");
-  });
+  $('edit').addEventListener('click', function(){ stage.style.display='none'; setup.style.display='flex'; });
+  function loadDefaults(){ $('sources').value=DEFAULT_VIDEOS; $('feeds').value=DEFAULT_FEEDS; setErr(""); }
+  loadDefaults();
+  $('demo').addEventListener('click', loadDefaults);
+  $('sources').addEventListener('keydown', function(e){ if((e.metaKey||e.ctrlKey)&&e.key==='Enter') startBuild(); });
+  $('feeds').addEventListener('keydown', function(e){ if((e.metaKey||e.ctrlKey)&&e.key==='Enter') startBuild(); });
 
   function startBuild(){
     setErr("");
-    var lines = $('sources').value.split(/[\n,]+/);
-    var ids = [], seen = {};
-    for(var i=0;i<lines.length;i++){
-      var id = extractId(lines[i]);
-      if(id && !seen[id]){ seen[id]=1; ids.push(id); }
-    }
-    if(ids.length === 0){ setErr("No valid YouTube links or IDs found."); return; }
-    if(ids.length > 16){ ids = ids.slice(0,16); setErr("Capped at 16 sources."); }
+    var vids=[], seen={};
+    $('sources').value.split(/[\n,]+/).forEach(function(l){ var id=extractId(l); if(id&&!seen[id]){seen[id]=1;vids.push(id);} });
+    var rssUrls=[], rseen={};
+    $('feeds').value.split(/\n+/).forEach(function(l){ l=l.trim(); if(/^https?:\/\//i.test(l)&&!rseen[l]){rseen[l]=1;rssUrls.push(l);} });
 
-    // reset
-    feeds.forEach(function(f){ try{ f.player && f.player.destroy(); }catch(e){} });
-    feeds = []; wall.innerHTML = ""; live = 0;
+    if(vids.length===0 && rssUrls.length===0){ setErr("Add at least one video source or RSS feed."); return; }
 
-    var cols = ids.length <= 1 ? 1 : ids.length <= 2 ? 2 : ids.length <= 6 ? 3 : 4;
-    var span = ids.length >= 3 ? 2 : 1;
+    tiles.forEach(function(t){ try{ t.player&&t.player.destroy(); }catch(e){} });
+    tiles=[]; wall.innerHTML=""; focus=0; audioIdx=-1;
+
+    var total=vids.length+(rssUrls.length?1:0);
+    var cols = total<=1?1: total<=2?2: total<=6?3: 4;
+    var span = total>=3?2:1;
     wall.style.setProperty('--cols', cols);
 
-    ids.forEach(function(id, idx){
-      var tile = document.createElement('div');
-      tile.className = 'tile';
-      tile.style.setProperty('--span', span);
-      tile.dataset.index = idx;
-      tile.innerHTML =
-        '<div class="screen"><div id="player-'+idx+'"></div></div>' +
-        '<div class="chrome"><div class="topbar">' +
-          '<span class="ch">CH '+(idx+1)+'</span>' +
-          '<span class="tally-badge"><span class="dot"></span>ON AIR</span>' +
-        '</div><div class="topbar" style="justify-content:flex-end;align-items:flex-end">' +
-          '<span class="mutedtag">AUDIO MUTED</span>' +
-        '</div></div>' +
-        '<div class="overlay-msg">CH '+(idx+1)+' unavailable<br>(embedding disabled or stream offline)</div>';
-      tile.addEventListener('click', function(){ setLive(idx); });
-      wall.appendChild(tile);
-      feeds.push({ videoId:id, player:null, ready:false, errored:false, el:tile });
-    });
+    var n=0;
+    vids.forEach(function(id){ addVideoTile(id, n++); });
+    if(rssUrls.length) addWireTile(rssUrls, n++);
+    tiles.forEach(function(t){ t.el.style.setProperty('--span', span); });
 
-    setup.style.display = 'none';
-    stage.style.display = 'flex';
-    renderDesk();
+    // initial focus / audio: first video if any, else first tile
+    var firstVid=-1; for(var i=0;i<tiles.length;i++){ if(tiles[i].kind==='youtube'){ firstVid=i; break; } }
+    focus = firstVid>=0?firstVid:0;
+    audioIdx = firstVid;
 
-    if(apiReady) buildPlayers(); else pendingBuild = true;
+    setup.style.display='none'; stage.style.display='flex';
+    tiles.forEach(function(t,i){ t.el.classList.toggle('big', i===focus); });
+    applyAudioAndAir(); renderDesk();
+
+    if(vids.length){ if(apiReady) buildPlayers(); else pendingBuild=true; }
+    // RSS loads immediately + on interval
+    refreshAllFeeds();
+    if(window.__rssTimer) clearInterval(window.__rssTimer);
+    if(window.__tickTimer) clearInterval(window.__tickTimer);
+    window.__rssTimer=setInterval(refreshAllFeeds, REFRESH_MS);
+    window.__tickTimer=setInterval(tickTimes, TICK_MS);
   }
 
+  function addVideoTile(id, n){
+    var el=document.createElement('div'); el.className='tile';
+    el.innerHTML=
+      '<div class="screen"><div id="player-'+n+'"></div></div>'+
+      '<div class="chrome"><div class="topbar"><span class="ch">CH '+(n+1)+'</span>'+
+        '<span class="tally-badge"><span class="dot"></span>ON AIR</span></div>'+
+        '<div class="topbar end"><span class="mutedtag">AUDIO MUTED</span></div></div>'+
+      '<div class="overlay-msg">CH '+(n+1)+' unavailable<br>(embedding disabled or stream offline)</div>';
+    var idx=tiles.length;
+    el.addEventListener('click', function(){ setFocus(idx); });
+    wall.appendChild(el);
+    tiles.push({kind:'youtube', videoId:id, player:null, ready:false, errored:false, title:'', el:el, __n:n});
+  }
+
+  function addWireTile(urls, n){
+    var el=document.createElement('div'); el.className='tile rss';
+    el.innerHTML=
+      '<span class="ch rss-ch">CH '+(n+1)+'</span>'+
+      '<div class="feedhead"><span class="feedtitle">Wires &middot; '+urls.length+' sources</span>'+
+        '<span class="feedstat updating"><span class="statdot"></span><span class="stattxt">updating</span></span></div>'+
+      '<div class="feedlist"><div class="feedempty">Fetching feeds…</div></div>';
+    var idx=tiles.length;
+    var t={kind:'rss', urls:urls, items:[], seen:{}, primed:false, lastUpdate:0, failed:false, el:el,
+           listEl:el.querySelector('.feedlist'), titleEl:el.querySelector('.feedtitle'),
+           statEl:el.querySelector('.feedstat'), statTxtEl:el.querySelector('.stattxt')};
+    el.querySelector('.feedhead').addEventListener('click', function(){ setFocus(idx); });
+    el.addEventListener('click', function(e){ if(!e.target.closest('a')&&!e.target.closest('.feedhead')) setFocus(idx); });
+    t.listEl.addEventListener('click', function(e){ if(e.target.closest('a')) e.stopPropagation(); });
+    wall.appendChild(el);
+    tiles.push(t);
+  }
+
+  /* players */
   function buildPlayers(){
-    feeds.forEach(function(f, idx){
-      f.player = new YT.Player('player-'+idx, {
-        videoId: f.videoId,
-        playerVars: { autoplay:1, mute:1, controls:0, rel:0, playsinline:1, modestbranding:1, disablekb:1, iv_load_policy:3 },
-        events: {
-          'onReady': function(e){
-            f.ready = true;
-            try{
-              e.target.mute();
-              e.target.setVolume(volume);
-              e.target.playVideo();
-              var d = e.target.getVideoData && e.target.getVideoData();
-              if(d && d.title){ f.title = d.title; if(idx===live) renderDesk(); }
-            }catch(err){}
-            applyAudio();
-          },
-          'onError': function(){
-            f.errored = true;
-            f.el.classList.add('errored');
-            if(idx===live) renderDesk();
-          }
+    tiles.forEach(function(t,i){
+      if(t.kind!=='youtube'||t.player) return;
+      t.player=new YT.Player('player-'+t.__n, {
+        videoId:t.videoId,
+        playerVars:{autoplay:1,mute:1,controls:0,rel:0,playsinline:1,modestbranding:1,disablekb:1,iv_load_policy:3},
+        events:{
+          'onReady':function(e){ t.ready=true; try{ e.target.mute(); e.target.setVolume(volume); e.target.playVideo();
+              var d=e.target.getVideoData&&e.target.getVideoData(); if(d&&d.title){ t.title=d.title; renderDesk(); } }catch(err){}
+            applyAudioAndAir(); },
+          'onError':function(){ t.errored=true; t.el.classList.add('errored'); renderDesk(); }
         }
       });
     });
   }
 
-  /* ---- audio routing ---- */
-  function applyAudio(){
-    feeds.forEach(function(f, idx){
-      if(!f.player || !f.ready) return;
-      try{
-        if(idx===live && !muted){ f.player.unMute(); f.player.setVolume(volume); }
-        else { f.player.mute(); }
-      }catch(e){}
+  /* audio + air */
+  function applyAudioAndAir(){
+    tiles.forEach(function(t,i){
+      if(t.kind!=='youtube') return;
+      var on=(i===audioIdx);
+      t.el.classList.toggle('air', on);
+      t.el.classList.toggle('is-muted', on&&muted);
+      if(t.player&&t.ready){ try{ if(on&&!muted){ t.player.unMute(); t.player.setVolume(volume); } else { t.player.mute(); } }catch(e){} }
     });
   }
 
-  function setLive(idx){
-    if(idx<0 || idx>=feeds.length) return;
-    live = idx;
-    feeds.forEach(function(f,i){ f.el.classList.toggle('live', i===idx); });
-    updateMutedClass();
-    applyAudio();
-    renderDesk();
-    // pull title if it arrived late
-    var f = feeds[idx];
-    if(f.player && f.ready && !f.title){
-      try{ var d=f.player.getVideoData(); if(d&&d.title){ f.title=d.title; renderDesk(); } }catch(e){}
-    }
+  function setFocus(i){
+    if(i<0||i>=tiles.length) return;
+    focus=i;
+    tiles.forEach(function(t,idx){ t.el.classList.toggle('big', idx===focus); });
+    if(tiles[i].kind==='youtube') audioIdx=i;
+    applyAudioAndAir(); renderDesk();
   }
+  function cycle(dir){ if(tiles.length) setFocus((focus+dir+tiles.length)%tiles.length); }
 
-  function cycle(dir){
-    if(feeds.length===0) return;
-    setLive((live + dir + feeds.length) % feeds.length);
-  }
-
-  function changeVolume(delta){
-    volume = Math.max(0, Math.min(100, volume + delta));
-    if(muted && volume>0){ muted=false; updateMutedClass(); }
-    applyAudio();
-    renderDesk();
+  function changeVolume(d){
+    if(audioIdx<0){ showToast('<div class="big">NO AUDIO</div>'); return; }
+    volume=Math.max(0,Math.min(100,volume+d));
+    if(muted&&volume>0){ muted=false; }
+    applyAudioAndAir(); renderDesk();
     showToast('<div class="big">VOL '+volume+'</div>'+barsHtml(volume,false));
   }
-
   function toggleMute(){
-    muted = !muted;
-    updateMutedClass();
-    applyAudio();
-    renderDesk();
+    if(audioIdx<0){ showToast('<div class="big">NO AUDIO</div>'); return; }
+    muted=!muted; applyAudioAndAir(); renderDesk();
     showToast('<div class="big">'+(muted?'MUTED':'AUDIO ON')+'</div>');
   }
-
-  function updateMutedClass(){
-    feeds.forEach(function(f,i){ f.el.classList.toggle('is-muted', i===live && muted); });
-  }
-
   function togglePlay(){
-    var f = feeds[live];
-    if(!f || !f.player || !f.ready) return;
-    try{
-      var st = f.player.getPlayerState(); // 1 playing, 2 paused
-      if(st===1){ f.player.pauseVideo(); showToast('<div class="big">PAUSED</div>'); }
-      else { f.player.playVideo(); showToast('<div class="big">PLAY</div>'); }
-    }catch(e){}
+    if(audioIdx<0) return; var t=tiles[audioIdx];
+    if(!t.player||!t.ready) return;
+    try{ var st=t.player.getPlayerState(); if(st===1){ t.player.pauseVideo(); showToast('<div class="big">PAUSED</div>'); }
+      else { t.player.playVideo(); showToast('<div class="big">PLAY</div>'); } }catch(e){}
   }
+  function goFullscreen(){ var t=tiles[focus]; if(!t) return; var el=t.el;
+    var req=el.requestFullscreen||el.webkitRequestFullscreen||el.msRequestFullscreen;
+    if(document.fullscreenElement) document.exitFullscreen(); else if(req) req.call(el); }
 
-  function goFullscreen(){
-    var f = feeds[live];
-    if(!f) return;
-    var el = f.el;
-    var req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-    if(document.fullscreenElement){ document.exitFullscreen(); }
-    else if(req){ req.call(el); }
-  }
-
-  /* ---- desk / meters ---- */
-  function barsHtml(vol, off){
-    var n = 20, lit = Math.round(vol/100*n), h='';
-    for(var i=0;i<n;i++){
-      var cls = i<lit ? 'on' : '';
-      if(cls && i>=n*0.85) cls+=' peak'; else if(cls && i>=n*0.6) cls+=' hot';
-      h+='<i class="'+cls+'"></i>';
-    }
-    return '<div class="bars'+(off?' off':'')+'">'+h+'</div>';
-  }
-
+  /* desk */
+  function barsHtml(vol,off){ var n=20,lit=Math.round(vol/100*n),h='';
+    for(var i=0;i<n;i++){ var c=i<lit?'on':''; if(c&&i>=n*0.85)c+=' peak'; else if(c&&i>=n*0.6)c+=' hot'; h+='<i class="'+c+'"></i>'; }
+    return '<div class="bars'+(off?' off':'')+'">'+h+'</div>'; }
   function renderDesk(){
-    var f = feeds[live] || {};
-    var onair = $('onair');
-    onair.classList.toggle('muted', muted);
-    $('onairTxt').textContent = muted ? 'AUDIO MUTED' : 'ON AIR';
-    var label = 'CH '+(live+1);
-    if(f.errored) label += ' · unavailable';
-    else if(f.title) label += ' · '+f.title;
-    $('deskSrc').textContent = label;
-    var bars = $('deskBars');
-    var b = barsHtml(volume, muted);
-    bars.innerHTML = b.replace(/^<div class="bars[^"]*">|<\/div>$/g,'');
-    bars.className = 'bars'+(muted?' off':'');
+    var a=audioIdx>=0?tiles[audioIdx]:null;
+    var onair=$('onair'); onair.classList.toggle('muted', muted||!a);
+    $('onairTxt').textContent = !a?'NO AUDIO':(muted?'AUDIO MUTED':'ON AIR');
+    var label = a ? ('CH '+(audioIdx+1)+(a.errored?' · unavailable':(a.title?' · '+a.title:''))) : 'feeds only — no audio source';
+    $('deskSrc').textContent=label;
+    var bars=$('deskBars'); bars.innerHTML=barsHtml(volume, muted||!a).replace(/^<div[^>]*>|<\/div>$/g,'');
+    bars.className='bars'+((muted||!a)?' off':'');
   }
 
-  /* ---- toast ---- */
-  var toastT;
-  function showToast(html){
-    toast.innerHTML = html;
-    toast.classList.add('show');
-    clearTimeout(toastT);
-    toastT = setTimeout(function(){ toast.classList.remove('show'); }, 900);
+  /* toast */
+  var toastT; function showToast(h){ toast.innerHTML=h; toast.classList.add('show'); clearTimeout(toastT);
+    toastT=setTimeout(function(){ toast.classList.remove('show'); },900); }
+
+  /* ---- RSS fetching ---- */
+  function setFeedStatus(t, state, label){
+    t.statEl.className='feedstat '+state;
+    t.statTxtEl.textContent = label || (state==='ok'?('upd '+ago(t.lastUpdate)+' ago'):state==='updating'?'updating':'failed');
+  }
+  function proxies(url){
+    var e=encodeURIComponent(url);
+    return [
+      {u:'https://api.allorigins.win/raw?url='+e, kind:'xml'},
+      {u:'https://corsproxy.io/?url='+e, kind:'xml'},
+      {u:'https://api.rss2json.com/v1/api.json?rss_url='+e, kind:'json'}
+    ];
+  }
+  function parseXml(text){
+    var doc=new DOMParser().parseFromString(text,'text/xml');
+    if(doc.querySelector('parsererror')) return {title:'',items:[]};
+    var title=txt(doc.querySelector('channel>title'))||txt(doc.querySelector('feed>title'));
+    var items=[], rss=doc.querySelectorAll('item');
+    if(rss.length){ rss.forEach(function(n){ items.push({title:txt(n.querySelector('title')),
+      link:txt(n.querySelector('link')), date:txt(n.querySelector('pubDate'))||txt(n.querySelector('date')),
+      desc:strip(txt(n.querySelector('description')))}); }); }
+    else { doc.querySelectorAll('entry').forEach(function(n){ var l=n.querySelector('link');
+      items.push({title:txt(n.querySelector('title')), link:l?(l.getAttribute('href')||txt(l)):'',
+        date:txt(n.querySelector('updated'))||txt(n.querySelector('published')),
+        desc:strip(txt(n.querySelector('summary'))||txt(n.querySelector('content')))}); }); }
+    return {title:title, items:items};
+  }
+  function sourceLabel(url){
+    var h=hostname(url);
+    if(/bbci\.co\.uk|bbc\./.test(h)) return 'BBC';
+    if(/skynews/.test(h)) return 'Sky News';
+    if(/metoffice/.test(h)) return 'Met Office';
+    if(/theguardian/.test(h)) return 'Guardian';
+    if(/independent/.test(h)) return 'Independent';
+    if(/telegraph/.test(h)) return 'Telegraph';
+    if(/manchestereveningnews|men\b/.test(h)) return 'MEN';
+    if(/liverpoolecho/.test(h)) return 'Echo';
+    return h.split('.')[0].toUpperCase();
+  }
+  async function fetchOne(url){
+    var list=proxies(url);
+    for(var i=0;i<list.length;i++){
+      try{
+        var r=await fetch(list[i].u, {cache:'no-store'}); if(!r.ok) throw 0;
+        var items=[];
+        if(list[i].kind==='json'){ var j=await r.json(); if(j.status!=='ok'||!j.items||!j.items.length) throw 0;
+          items=j.items.map(function(it){ return {title:it.title, link:it.link, date:it.pubDate, desc:strip(it.description)}; });
+        } else { var p=parseXml(await r.text()); items=p.items; if(!items.length) throw 0; }
+        return items.filter(function(it){ return it.title; });
+      }catch(e){ /* next proxy */ }
+    }
+    return null; // all proxies failed for this source
+  }
+  async function loadFeed(t){
+    setFeedStatus(t,'updating');
+    var results=await Promise.all(t.urls.map(function(u){
+      return fetchOne(u).then(function(items){ return {url:u, items:items}; });
+    }));
+    var all=[], okCount=0;
+    results.forEach(function(res){
+      if(res.items){ okCount++; var label=sourceLabel(res.url);
+        res.items.forEach(function(it){ it.source=label; all.push(it); }); }
+    });
+    if(okCount===0){ t.failed=true; renderFeed(t); setFeedStatus(t,'fail'); return; }
+    all.sort(function(a,b){ return new Date(b.date)-new Date(a.date); });
+    var seenLink={}; all=all.filter(function(it){ var k=it.link||it.title; if(seenLink[k]) return false; seenLink[k]=1; return true; });
+    t.items=all.slice(0,40); t.failed=false; t.lastUpdate=Date.now();
+    t.titleEl.textContent = 'Wires · '+okCount+'/'+t.urls.length+' sources';
+    renderFeed(t); setFeedStatus(t,'ok');
+  }
+  function renderFeed(t){
+    if(t.failed && !t.items.length){ t.listEl.innerHTML='<div class="feedempty">Wire unavailable — every proxy was blocked or the URLs aren\u2019t valid feeds. Press R to retry.</div>'; return; }
+    var prime=!t.primed, html='';
+    t.items.forEach(function(it){
+      var key=it.link||it.title;
+      var fresh=!t.seen[key]; if(key) t.seen[key]=1;
+      var flash = fresh && !prime;
+      html+='<a class="feeditem'+(flash?' flash':'')+'" href="'+escapeHtml(it.link)+'" target="_blank" rel="noopener" data-date="'+escapeHtml(it.date||'')+'">'+
+        '<div class="meta">'+(it.source?'<span class="src">'+escapeHtml(it.source)+'</span>':'')+'<span class="t">'+ago(it.date)+'</span></div>'+
+        '<div class="ttl">'+escapeHtml(it.title)+'</div>'+
+        (it.desc?'<div class="snippet">'+escapeHtml(it.desc)+'</div>':'')+'</a>';
+    });
+    t.listEl.innerHTML=html;
+    t.primed=true;
+    t.listEl.querySelectorAll('.feeditem.flash').forEach(function(a){
+      setTimeout(function(){ a.classList.remove('flash'); }, FLASH_MS);
+    });
+  }
+  function refreshAllFeeds(){ tiles.forEach(function(t){ if(t.kind==='rss') loadFeed(t); }); }
+  function tickTimes(){
+    tiles.forEach(function(t){ if(t.kind!=='rss') return;
+      if(t.lastUpdate&&!t.failed) setFeedStatus(t,'ok');
+      t.listEl.querySelectorAll('.feeditem').forEach(function(a){ var d=a.getAttribute('data-date'); var s=a.querySelector('.t'); if(s) s.textContent=ago(d); });
+    });
   }
 
-  /* ---- edit ---- */
-  $('edit').addEventListener('click', function(){
-    stage.style.display='none';
-    setup.style.display='flex';
-  });
-
-  /* ---- keyboard ---- */
+  /* keyboard */
   document.addEventListener('keydown', function(e){
     if(stage.style.display==='none') return;
-    if(document.activeElement && document.activeElement.tagName==='TEXTAREA') return;
-    var k = e.key;
+    var ae=document.activeElement; if(ae&&ae.tagName==='TEXTAREA') return;
+    var k=e.key;
     if(k==='ArrowRight'){ cycle(1); e.preventDefault(); }
     else if(k==='ArrowLeft'){ cycle(-1); e.preventDefault(); }
     else if(k==='ArrowUp'){ changeVolume(5); e.preventDefault(); }
@@ -493,14 +508,9 @@
     else if(k===' '){ togglePlay(); e.preventDefault(); }
     else if(k==='m'||k==='M'){ toggleMute(); }
     else if(k==='f'||k==='F'){ goFullscreen(); }
-    else if(/^[1-9]$/.test(k)){ var n=parseInt(k,10)-1; if(n<feeds.length){ setLive(n); } }
-    // first real interaction nudges audio in case autoplay kept it muted
-    applyAudio();
-  });
-
-  // Ctrl/Cmd+Enter in textarea = build
-  $('sources').addEventListener('keydown', function(e){
-    if((e.metaKey||e.ctrlKey) && e.key==='Enter'){ startBuild(); }
+    else if(k==='r'||k==='R'){ refreshAllFeeds(); showToast('<div class="big">REFRESHING</div>'); }
+    else if(/^[1-9]$/.test(k)){ var n=parseInt(k,10)-1; if(n<tiles.length) setFocus(n); }
+    applyAudioAndAir();
   });
 })();
 </script>
