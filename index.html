@@ -78,8 +78,9 @@
   .tile.errored .screen{display:none}
 
   /* ---------- RSS TILE ---------- */
-  .tile.rss{background:var(--panel);display:flex;flex-direction:column;cursor:default}
-  .tile.rss:hover{border-color:var(--line-bright)}
+  .tile.rss{background:var(--panel);display:flex;flex-direction:column;cursor:default;
+    grid-column:1 / -1;grid-row:auto;order:900;max-height:34vh}
+  .tile.rss:hover{border-color:var(--line)}
   .feedhead{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;
     padding:9px 11px;border-bottom:1px solid var(--line);cursor:pointer}
   .feedtitle{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text);
@@ -90,8 +91,14 @@
   .feedstat.ok .statdot{background:var(--green)}
   .feedstat.fail .statdot{background:var(--tally)}
   .feedlist{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0}
-  .feedlist::-webkit-scrollbar{width:8px}
+  .feedlist::-webkit-scrollbar{width:8px;height:8px}
   .feedlist::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+  /* horizontal card layout for the bottom wire strip */
+  .tile.rss .feedlist{display:flex;flex-direction:row;overflow-x:auto;overflow-y:hidden;align-items:stretch}
+  .tile.rss .feeditem{flex:0 0 260px;border-bottom:none;border-right:1px solid #20242b;display:flex;flex-direction:column;justify-content:flex-start}
+  .tile.rss .feeditem .ttl{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .tile.rss .feeditem.flash{border-left:none;border-top:2px solid var(--tally);padding-left:11px}
+  .tile.rss .feedempty{flex:1 0 auto;display:flex;align-items:center}
   .feeditem{display:block;padding:8px 11px;border-bottom:1px solid #20242b;text-decoration:none;color:var(--text)}
   .feeditem:hover{background:var(--panel-2)}
   @keyframes flashred{0%,100%{background:rgba(255,46,46,0)}50%{background:rgba(255,46,46,.24)}}
@@ -270,7 +277,7 @@
 
     var n=0;
     vids.forEach(function(id){ addVideoTile(id, n++); });
-    if(rssUrls.length) addWireTile(rssUrls, n++);
+    if(rssUrls.length) addWireTile(rssUrls);
     tiles.forEach(function(t){ t.el.style.setProperty('--span', span); });
 
     // initial focus / audio: first video if any, else first tile
@@ -305,20 +312,15 @@
     tiles.push({kind:'youtube', videoId:id, player:null, ready:false, errored:false, title:'', el:el, __n:n});
   }
 
-  function addWireTile(urls, n){
+  function addWireTile(urls){
     var el=document.createElement('div'); el.className='tile rss';
     el.innerHTML=
-      '<span class="ch rss-ch">CH '+(n+1)+'</span>'+
       '<div class="feedhead"><span class="feedtitle">Wires &middot; '+urls.length+' sources</span>'+
         '<span class="feedstat updating"><span class="statdot"></span><span class="stattxt">updating</span></span></div>'+
       '<div class="feedlist"><div class="feedempty">Fetching feeds…</div></div>';
-    var idx=tiles.length;
     var t={kind:'rss', urls:urls, items:[], seen:{}, primed:false, lastUpdate:0, failed:false, el:el,
            listEl:el.querySelector('.feedlist'), titleEl:el.querySelector('.feedtitle'),
            statEl:el.querySelector('.feedstat'), statTxtEl:el.querySelector('.stattxt')};
-    el.querySelector('.feedhead').addEventListener('click', function(){ setFocus(idx); });
-    el.addEventListener('click', function(e){ if(!e.target.closest('a')&&!e.target.closest('.feedhead')) setFocus(idx); });
-    t.listEl.addEventListener('click', function(e){ if(e.target.closest('a')) e.stopPropagation(); });
     wall.appendChild(el);
     tiles.push(t);
   }
@@ -352,14 +354,18 @@
   }
 
   function setFocus(i){
-    if(i<0||i>=tiles.length) return;
+    if(i<0||i>=tiles.length||tiles[i].kind!=='youtube') return;
     focus=i;
     tiles.forEach(function(t,idx){ t.el.classList.toggle('big', idx===focus); });
-    if(tiles[i].kind==='youtube') audioIdx=i;
+    audioIdx=i;
     applyAudioAndAir(); renderDesk();
   }
-  function cycle(dir){ if(tiles.length) setFocus((focus+dir+tiles.length)%tiles.length); }
-
+  function videoIndices(){ var v=[]; tiles.forEach(function(t,i){ if(t.kind==='youtube') v.push(i); }); return v; }
+  function cycle(dir){
+    var v=videoIndices(); if(!v.length) return;
+    var pos=v.indexOf(focus); if(pos<0) pos=0;
+    setFocus(v[(pos+dir+v.length)%v.length]);
+  }
   function changeVolume(d){
     if(audioIdx<0){ showToast('<div class="big">NO AUDIO</div>'); return; }
     volume=Math.max(0,Math.min(100,volume+d));
@@ -509,7 +515,7 @@
     else if(k==='m'||k==='M'){ toggleMute(); }
     else if(k==='f'||k==='F'){ goFullscreen(); }
     else if(k==='r'||k==='R'){ refreshAllFeeds(); showToast('<div class="big">REFRESHING</div>'); }
-    else if(/^[1-9]$/.test(k)){ var n=parseInt(k,10)-1; if(n<tiles.length) setFocus(n); }
+    else if(/^[1-9]$/.test(k)){ var v=videoIndices(), n=parseInt(k,10)-1; if(n<v.length) setFocus(v[n]); }
     applyAudioAndAir();
   });
 })();
