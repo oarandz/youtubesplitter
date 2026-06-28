@@ -97,15 +97,20 @@
   .tile.rss .feedlist{display:flex;flex-direction:row;overflow-x:auto;overflow-y:hidden;align-items:stretch}
   .tile.rss .feeditem{flex:0 0 260px;border-bottom:none;border-right:1px solid #20242b;display:flex;flex-direction:column;justify-content:flex-start}
   .tile.rss .feeditem .ttl{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-  .tile.rss .feeditem.flash{border-left:none;border-top:2px solid var(--tally);padding-left:11px}
+  .tile.rss .feeditem.flash-red,.tile.rss .feeditem.flash-orange{border-left:none;padding-left:11px}
+  .tile.rss .feeditem.flash-red{border-top:2px solid var(--tally)}
+  .tile.rss .feeditem.flash-orange{border-top:2px solid var(--amber)}
   .tile.rss .feedempty{flex:1 0 auto;display:flex;align-items:center}
   .feeditem{display:block;padding:8px 11px;border-bottom:1px solid #20242b;text-decoration:none;color:var(--text)}
   .feeditem:hover{background:var(--panel-2)}
-  @keyframes flashred{0%,100%{background:rgba(255,46,46,0)}50%{background:rgba(255,46,46,.24)}}
-  .feeditem.flash{animation:flashred 1s ease-in-out infinite;border-left:2px solid var(--tally);padding-left:9px}
+  @keyframes flashred{0%,100%{background:rgba(255,46,46,0)}50%{background:rgba(255,46,46,.26)}}
+  @keyframes flashorange{0%,100%{background:rgba(255,176,46,0)}50%{background:rgba(255,176,46,.22)}}
+  .feeditem.flash-red{animation:flashred 1s ease-in-out infinite;border-left:2px solid var(--tally);padding-left:9px}
+  .feeditem.flash-orange{animation:flashorange 1.2s ease-in-out infinite;border-left:2px solid var(--amber);padding-left:9px}
   .feeditem .meta{display:flex;gap:7px;align-items:center;color:var(--dim);font-size:9px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px}
   .feeditem .meta .src{font-weight:700;color:var(--text);background:var(--panel-2);border:1px solid var(--line-bright);padding:1px 5px;border-radius:3px;letter-spacing:.06em}
-  .feeditem.flash .meta .src{background:var(--tally);border-color:var(--tally);color:#fff}
+  .feeditem.flash-red .meta .src{background:var(--tally);border-color:var(--tally);color:#fff}
+  .feeditem.flash-orange .meta .src{background:var(--amber);border-color:var(--amber);color:#0d0f12}
   .feeditem .ttl{font-size:12px;line-height:1.4;color:var(--text)}
   .feeditem .snippet{display:none;font-size:11px;line-height:1.5;color:var(--muted);margin-top:5px}
   .tile.rss.big .feeditem .snippet{display:block}
@@ -148,7 +153,8 @@
   }
   @media (prefers-reduced-motion:reduce){
     .tally-badge .dot,.desk-onair .dot,.feedstat.updating .statdot{animation:none}
-    .feeditem.flash{animation:none;background:rgba(255,46,46,.16)}
+    .feeditem.flash-red{animation:none;background:rgba(255,46,46,.16)}
+    .feeditem.flash-orange{animation:none;background:rgba(255,176,46,.16)}
   }
 </style>
 </head>
@@ -166,7 +172,7 @@
 
         <div class="hint">
           Video accepts <code>watch?v=</code>, <code>youtu.be/</code>, <code>/live/</code>, <code>/embed/</code>, <code>/shorts/</code> or bare IDs.
-          All RSS feeds are merged into one wire, tagged by source, newest first. New items flash red for 10 seconds. Feeds are fetched through a public CORS proxy — if the wire stays on "failed", the proxy is likely rate-limited or a URL isn't a valid feed.
+          All RSS feeds are merged into one wire, tagged by source, newest first, refreshing every 30 seconds. New headlines flash orange for 30 seconds; anything timestamped 5 minutes ago or less flashes red for the whole 5 minutes. Feeds are fetched through public CORS proxies (one per feed to spread the load) — if the wire stays on "failed", the proxies are likely rate-limited or a URL isn't a valid feed.
         </div>
         <div class="row">
           <button id="load" class="primary">Build the wall</button>
@@ -208,7 +214,9 @@
   var audioIdx = -1;        // video tile with sound
   var volume = 70, muted = false;
   var apiReady = false, pendingBuild = false;
-  var REFRESH_MS = 120000, TICK_MS = 30000, FLASH_MS = 10000;
+  var REFRESH_MS = 30000, TICK_MS = 30000, FLASH_TICK_MS = 5000;
+  var ORANGE_MS = 30000;        // new-to-feed items flash orange this long
+  var RED_WINDOW_MS = 300000;   // items timestamped within this window flash red
 
   var DEFAULT_VIDEOS =
     "https://www.youtube.com/watch?v=YDvsBbKfLPA\n"+
@@ -294,8 +302,10 @@
     refreshAllFeeds();
     if(window.__rssTimer) clearInterval(window.__rssTimer);
     if(window.__tickTimer) clearInterval(window.__tickTimer);
+    if(window.__flashTimer) clearInterval(window.__flashTimer);
     window.__rssTimer=setInterval(refreshAllFeeds, REFRESH_MS);
     window.__tickTimer=setInterval(tickTimes, TICK_MS);
+    window.__flashTimer=setInterval(refreshFlashes, FLASH_TICK_MS);
   }
 
   function addVideoTile(id, n){
@@ -318,7 +328,7 @@
       '<div class="feedhead"><span class="feedtitle">Wires &middot; '+urls.length+' sources</span>'+
         '<span class="feedstat updating"><span class="statdot"></span><span class="stattxt">updating</span></span></div>'+
       '<div class="feedlist"><div class="feedempty">Fetching feeds…</div></div>';
-    var t={kind:'rss', urls:urls, items:[], seen:{}, primed:false, lastUpdate:0, failed:false, el:el,
+    var t={kind:'rss', urls:urls, items:[], seen:{}, firstSeen:{}, primed:false, lastUpdate:0, failed:false, el:el,
            listEl:el.querySelector('.feedlist'), titleEl:el.querySelector('.feedtitle'),
            statEl:el.querySelector('.feedstat'), statTxtEl:el.querySelector('.stattxt')};
     wall.appendChild(el);
@@ -411,13 +421,15 @@
     t.statEl.className='feedstat '+state;
     t.statTxtEl.textContent = label || (state==='ok'?('upd '+ago(t.lastUpdate)+' ago'):state==='updating'?'updating':'failed');
   }
-  function proxies(url){
+  function proxies(url, offset){
     var e=encodeURIComponent(url);
-    return [
+    var list=[
       {u:'https://api.allorigins.win/raw?url='+e, kind:'xml'},
       {u:'https://corsproxy.io/?url='+e, kind:'xml'},
       {u:'https://api.rss2json.com/v1/api.json?rss_url='+e, kind:'json'}
     ];
+    offset=((offset||0)%list.length+list.length)%list.length;   // each feed starts on a different proxy
+    return list.slice(offset).concat(list.slice(0,offset));
   }
   function parseXml(text){
     var doc=new DOMParser().parseFromString(text,'text/xml');
@@ -445,8 +457,8 @@
     if(/liverpoolecho/.test(h)) return 'Echo';
     return h.split('.')[0].toUpperCase();
   }
-  async function fetchOne(url){
-    var list=proxies(url);
+  async function fetchOne(url, offset){
+    var list=proxies(url, offset);
     for(var i=0;i<list.length;i++){
       try{
         var r=await fetch(list[i].u, {cache:'no-store'}); if(!r.ok) throw 0;
@@ -461,8 +473,8 @@
   }
   async function loadFeed(t){
     setFeedStatus(t,'updating');
-    var results=await Promise.all(t.urls.map(function(u){
-      return fetchOne(u).then(function(items){ return {url:u, items:items}; });
+    var results=await Promise.all(t.urls.map(function(u, i){
+      return fetchOne(u, i).then(function(items){ return {url:u, items:items}; });
     }));
     var all=[], okCount=0;
     results.forEach(function(res){
@@ -476,22 +488,38 @@
     t.titleEl.textContent = 'Wires · '+okCount+'/'+t.urls.length+' sources';
     renderFeed(t); setFeedStatus(t,'ok');
   }
+  // Decide a flash class from a timestamp and the time the item first appeared in the feed.
+  function flashClassFor(dateStr, firstSeenVal){
+    var now=Date.now(), pub=Date.parse(dateStr);
+    if(!isNaN(pub) && (now-pub)<=RED_WINDOW_MS && (now-pub)>=-120000) return 'flash-red';
+    if(firstSeenVal && (now-firstSeenVal)<=ORANGE_MS) return 'flash-orange';
+    return '';
+  }
   function renderFeed(t){
     if(t.failed && !t.items.length){ t.listEl.innerHTML='<div class="feedempty">Wire unavailable — every proxy was blocked or the URLs aren\u2019t valid feeds. Press R to retry.</div>'; return; }
     var prime=!t.primed, html='';
     t.items.forEach(function(it){
       var key=it.link||it.title;
-      var fresh=!t.seen[key]; if(key) t.seen[key]=1;
-      var flash = fresh && !prime;
-      html+='<a class="feeditem'+(flash?' flash':'')+'" href="'+escapeHtml(it.link)+'" target="_blank" rel="noopener" data-date="'+escapeHtml(it.date||'')+'">'+
+      if(!(key in t.firstSeen)) t.firstSeen[key] = prime ? 0 : Date.now();  // 0 = baseline on first load (no orange)
+      t.seen[key]=1;
+      var cls=flashClassFor(it.date, t.firstSeen[key]);
+      html+='<a class="feeditem'+(cls?' '+cls:'')+'" href="'+escapeHtml(it.link)+'" target="_blank" rel="noopener" '+
+        'data-date="'+escapeHtml(it.date||'')+'" data-key="'+escapeHtml(key)+'">'+
         '<div class="meta">'+(it.source?'<span class="src">'+escapeHtml(it.source)+'</span>':'')+'<span class="t">'+ago(it.date)+'</span></div>'+
         '<div class="ttl">'+escapeHtml(it.title)+'</div>'+
         (it.desc?'<div class="snippet">'+escapeHtml(it.desc)+'</div>':'')+'</a>';
     });
     t.listEl.innerHTML=html;
     t.primed=true;
-    t.listEl.querySelectorAll('.feeditem.flash').forEach(function(a){
-      setTimeout(function(){ a.classList.remove('flash'); }, FLASH_MS);
+  }
+  // Re-evaluate flash colours on existing items without rebuilding (drives the timed fade-outs).
+  function refreshFlashes(){
+    tiles.forEach(function(t){ if(t.kind!=='rss') return;
+      t.listEl.querySelectorAll('.feeditem').forEach(function(a){
+        var cls=flashClassFor(a.getAttribute('data-date'), t.firstSeen[a.getAttribute('data-key')]);
+        a.classList.toggle('flash-red', cls==='flash-red');
+        a.classList.toggle('flash-orange', cls==='flash-orange');
+      });
     });
   }
   function refreshAllFeeds(){ tiles.forEach(function(t){ if(t.kind==='rss') loadFeed(t); }); }
