@@ -324,7 +324,7 @@
     window.__tickTimer=setInterval(tickTimes, TICK_MS);
     window.__flashTimer=setInterval(refreshFlashes, FLASH_TICK_MS);
     window.__tpTimer=setInterval(updateTransport, 500);
-    window.__liveTimer=setInterval(liveWatch, 90000);
+    window.__liveTimer=setInterval(liveWatch, 180000);
   }
 
   /* ---------- tiles ---------- */
@@ -472,68 +472,75 @@
   }
 
   /* ---------- players ---------- */
-  function buildPlayers(){ tiles.forEach(function(t){ if(t.kind!=='youtube'||t.player) return;
-    if(t.handleUrl && !t.channelId) resolveAndBuild(t); else makePlayer(t); }); }
-
-  // Resolve a @handle / c/ / user/ URL to a UC channel ID via a CORS proxy, then build the live-follow player.
-  async function resolveChannel(url){
-    var e=encodeURIComponent(url), tries=['https://api.allorigins.win/raw?url='+e, 'https://corsproxy.io/?url='+e];
-    for(var i=0;i<tries.length;i++){ try{
-      var r=await fetch(tries[i],{cache:'no-store'}); if(!r.ok) throw 0; var h=await r.text();
-      var m=h.match(/"channelId":"(UC[A-Za-z0-9_-]{22})"/)||h.match(/channel\/(UC[A-Za-z0-9_-]{22})/)||h.match(/"externalId":"(UC[A-Za-z0-9_-]{22})"/);
-      if(m) return m[1];
-    }catch(e2){} } return null;
-  }
-  async function resolveAndBuild(t){
-    var ov=t.el.querySelector('.overlay-msg'); if(ov) ov.innerHTML='Finding live stream\u2026'; t.el.classList.add('errored');
-    var id=await resolveChannel(t.handleUrl);
-    if(id){ t.channelId=id; t.el.classList.remove('errored'); if(t.el.isConnected) makePlayer(t); }
-    else if(ov){ ov.innerHTML='Couldn\u2019t resolve this channel.<br>Try a channel ID (UC\u2026) instead.'; }
-  }
+  function buildPlayers(){ tiles.forEach(function(t){ if(t.kind!=='youtube'||t.player) return; makePlayer(t); }); }
 
   function makePlayer(t){
-    if(t.channelId){
-      var sc=t.el.querySelector('.screen');
-      var holder=sc.querySelector('#player-'+t.__n), old=sc.querySelector('iframe');
-      var ifr=document.createElement('iframe');
-      ifr.src='https://www.youtube.com/embed/live_stream?channel='+encodeURIComponent(t.channelId)+
-        '&enablejsapi=1&autoplay=1&mute=1&playsinline=1&controls=0&rel=0&modestbranding=1&iv_load_policy=3';
-      ifr.setAttribute('frameborder','0'); ifr.setAttribute('allowfullscreen','');
-      ifr.allow='autoplay; encrypted-media; picture-in-picture';
-      if(holder) holder.parentNode.replaceChild(ifr, holder);
-      else if(old) old.parentNode.replaceChild(ifr, old);
-      else sc.insertBefore(ifr, sc.firstChild);
-      t.player=new YT.Player(ifr, { events:{
+    if(t.channelId||t.handleUrl){ refreshLive(t, true); return; }   // channel -> resolve current live video
+    t.player=new YT.Player('player-'+t.__n, {
+      videoId:t.videoId,
+      playerVars:{autoplay:1,mute:1,controls:0,rel:0,playsinline:1,modestbranding:1,disablekb:1,iv_load_policy:3},
+      events:{
+        'onReady':function(e){ t.ready=true; try{ e.target.mute(); e.target.setVolume(volume); e.target.playVideo();
+            var d=e.target.getVideoData&&e.target.getVideoData(); if(d&&d.title){ t.title=d.title; renderDesk(); } }catch(err){}
+          applyAudioAndAir(); applyResCap(); },
+        'onError':function(){ t.errored=true; t.el.classList.add('errored'); renderDesk(); }
+      }
+    });
+  }
+
+  // Find a channel's CURRENT live video ID by reading its /live page through a CORS proxy.
+  async function resolveLiveVideo(t){
+    var liveUrl = t.channelId ? ('https://www.youtube.com/channel/'+t.channelId+'/live')
+                : t.handleUrl ? (t.handleUrl.replace(/\/$/,'')+'/live') : null;
+    if(!liveUrl) return null;
+    var e=encodeURIComponent(liveUrl), tries=['https://api.allorigins.win/raw?url='+e,'https://corsproxy.io/?url='+e];
+    for(var i=0;i<tries.length;i++){ try{
+      var r=await fetch(tries[i],{cache:'no-store'}); if(!r.ok) throw 0; var h=await r.text();
+      var liveNow = h.indexOf('hlsManifestUrl')>=0 || h.indexOf('"isLiveNow":true')>=0 || h.indexOf('BADGE_STYLE_TYPE_LIVE_NOW')>=0;
+      if(!liveNow) continue;
+      var m = h.match(/"videoDetails":\{"videoId":"([\w-]{11})"/)
+           || h.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([\w-]{11})"/)
+           || h.match(/watch\?v=([\w-]{11})/);
+      if(m) return m[1];
+    }catch(e2){} }
+    return null;
+  }
+
+  // Resolve and (create | swap) the player for a channel tile. Event-driven on stream end; watchdog for offline->live.
+  async function refreshLive(t, initial){
+    var now=Date.now();
+    if(!initial && t.lastReload && now-t.lastReload<20000) return; t.lastReload=now;
+    if(initial && !t.player){ var ov=t.el.querySelector('.overlay-msg'); if(ov) ov.innerHTML='Finding live stream\u2026'; t.el.classList.add('errored'); }
+    var id;
+    try{ id=await resolveLiveVideo(t); }catch(e){ id=null; }
+    if(!id){ if(!t.player){ var o2=t.el.querySelector('.overlay-msg');
+        if(o2) o2.innerHTML='CH '+(t.__n+1)+(t.label?(' \u00b7 '+escapeHtml(t.label)):'')+' offline<br>(waiting for the channel to go live)';
+        t.el.classList.add('errored'); } return; }
+    if(t.player && t.ready){
+      if(t.liveId!==id){ t.liveId=id; t.el.classList.remove('errored');
+        try{ t.player.loadVideoById(id); }catch(e){}
+        setTimeout(function(){ applyAudioAndAir(); applyResCap(); }, 600); }
+      return;
+    }
+    if(t.player) return;   // a build is already in flight
+    t.liveId=id; t.el.classList.remove('errored');
+    t.player=new YT.Player('player-'+t.__n, {
+      videoId:id,
+      playerVars:{autoplay:1,mute:1,controls:0,rel:0,playsinline:1,modestbranding:1,disablekb:1,iv_load_policy:3},
+      events:{
         'onReady':function(e){ t.ready=true; t.el.classList.remove('errored');
           try{ e.target.mute(); e.target.setVolume(volume); e.target.playVideo(); }catch(_){}
-          try{ var d=e.target.getVideoData&&e.target.getVideoData(); if(d&&d.title&&!t.label){ t.title=d.title; renderDesk(); } }catch(_){}
           applyAudioAndAir(); applyResCap(); },
-        'onStateChange':function(e){ if(e.data===0) scheduleReload(t); },   // 0 = ENDED -> a show finished; re-resolve live
-        'onError':function(){ scheduleReload(t); }
-      }});
-    } else {
-      t.player=new YT.Player('player-'+t.__n, {
-        videoId:t.videoId,
-        playerVars:{autoplay:1,mute:1,controls:0,rel:0,playsinline:1,modestbranding:1,disablekb:1,iv_load_policy:3},
-        events:{
-          'onReady':function(e){ t.ready=true; try{ e.target.mute(); e.target.setVolume(volume); e.target.playVideo();
-              var d=e.target.getVideoData&&e.target.getVideoData(); if(d&&d.title){ t.title=d.title; renderDesk(); } }catch(err){}
-            applyAudioAndAir(); applyResCap(); },
-          'onError':function(){ t.errored=true; t.el.classList.add('errored'); renderDesk(); }
-        }
-      });
-    }
+        'onStateChange':function(e){ if(e.data===0) refreshLive(t,false); },   // ENDED -> show finished, find the next live
+        'onError':function(){ refreshLive(t,false); }
+      }
+    });
   }
-  // When a channel ends/swaps a stream, re-resolve its current live broadcast (throttled so an offline channel doesn't loop).
-  function scheduleReload(t){
-    if(!t.channelId) return; var now=Date.now();
-    if(t.lastReload && now-t.lastReload<25000) return; t.lastReload=now;
-    setTimeout(function(){ if(!t.el||!t.el.isConnected) return;
-      try{ t.player&&t.player.destroy(); }catch(e){} t.player=null; t.ready=false; makePlayer(t); }, 4000);
-  }
+  // Only re-check channels that aren't currently playing (keeps proxy load low; catches offline->live and missed ends).
   function liveWatch(){ if(typeof YT==='undefined') return;
-    tiles.forEach(function(t){ if(!t.channelId||!t.player) return;
-      try{ var s=t.player.getPlayerState(); if(s===0||s===5) scheduleReload(t); }catch(e){} }); }
+    tiles.forEach(function(t){ if(!(t.channelId||t.handleUrl)) return;
+      var playing=false; try{ playing = t.player && t.player.getPlayerState && t.player.getPlayerState()===1; }catch(e){}
+      if(!playing) refreshLive(t,false); }); }
 
   /* ---------- main / audio ---------- */
   function applyAudioAndAir(){
